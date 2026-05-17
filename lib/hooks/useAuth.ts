@@ -26,7 +26,7 @@ export function useAuth() {
         initials: emailName.charAt(0).toUpperCase(),
         joined_at: new Date().toISOString(),
       }
-      await sb.from('profiles').upsert(newProfile, { onConflict: 'id' })
+      await (sb.from('profiles') as any).upsert(newProfile, { onConflict: 'id' })
       return {
         id: userId,
         name: emailName,

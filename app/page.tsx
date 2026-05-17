@@ -87,7 +87,8 @@ export default function LandingPage() {
     })
     if (authErr) { setError('Incorrect email or password.'); setLoading(false); return }
     // Load profile and store in sessionStorage
-    const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single()
+    const { data: profileData } = await sb.from('profiles').select('*').eq('id', data.user.id).single()
+    const profile = profileData as { first_name?: string; name?: string; initials?: string; username?: string; role?: string } | null
     const fn = profile?.first_name || (profile?.name?.split(' ')[0]) || siEmail.split('@')[0]
     sessionStorage.setItem('gopexly_user', JSON.stringify({
       id: data.user.id, name: profile?.name || fn, firstName: fn,
@@ -124,7 +125,8 @@ export default function LandingPage() {
     const initials = firstName[0].toUpperCase() + (lastName ? lastName[0].toUpperCase() : '')
 
     // Save profile
-    await sb.from('profiles').upsert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (sb.from('profiles') as any).upsert({
       id: data.user.id, name: fullName, first_name: firstName,
       initials, username, phone, joined_at: new Date().toISOString()
     }, { onConflict: 'id' })
