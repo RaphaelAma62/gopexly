@@ -1,14 +1,11 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { validateUsername } from '@/lib/utils'
 
 type AuthMode = 'signin' | 'signup'
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
-
-const APP_ORIGIN = (process.env.NEXT_PUBLIC_APP_URL || 'https://gopexly.onrender.com').replace(/\/$/, '')
-const HOME_PATH = '/home'
 
 interface SignUpData {
   firstName: string
@@ -20,49 +17,27 @@ interface SignUpData {
 }
 
 export default function LandingPage() {
-  const sb = useMemo(() => createClient(), [])
+  const sb = createClient()
   const [mode, setMode] = useState<AuthMode>('signin')
   const [modalOpen, setModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [signupDone, setSignupDone] = useState(false)
-
   const [siEmail, setSiEmail] = useState('')
   const [siPassword, setSiPassword] = useState('')
-
   const [suData, setSuData] = useState<SignUpData>({
-    firstName: '', lastName: '', username: '',
-    phone: '', email: '', password: ''
+    firstName: '', lastName: '', username: '', phone: '', email: '', password: ''
   })
   const [unStatus, setUnStatus] = useState<UsernameStatus>('idle')
   const [unMsg, setUnMsg] = useState('')
   const unTimer = useRef<NodeJS.Timeout | null>(null)
 
-  // If already logged in, go to home
+  // Redirect if already logged in
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        window.location.replace(HOME_PATH)
-      }
+      if (session) window.location.href = '/home'
     })
   }, [sb])
-
-  async function goToHomeAfterAuth() {
-    const { data: { session }, error: sessionErr } = await sb.auth.getSession()
-
-    if (sessionErr || !session) {
-      setError('Authentication succeeded, but your session is not ready yet. Please try signing in again.')
-      setLoading(false)
-      return
-    }
-
-    window.location.replace(HOME_PATH)
-
-    window.setTimeout(() => {
-      setError('Redirect is taking longer than expected. Please refresh the page or open /home.')
-      setLoading(false)
-    }, 5000)
-  }
 
   function openModal(m: AuthMode) {
     setMode(m); setModalOpen(true); setError('')
@@ -96,16 +71,24 @@ export default function LandingPage() {
     if (!siEmail || !siPassword) { setError('Please enter your email and password.'); return }
     setLoading(true)
     try {
-      const { error: authErr } = await sb.auth.signInWithPassword({
-        email: siEmail, password: siPassword
+      const { data, error: authErr } = await sb.auth.signInWithPassword({
+        email: siEmail.trim(), password: siPassword
       })
       if (authErr) {
         setError('Incorrect email or password.')
         setLoading(false)
         return
       }
-      await goToHomeAfterAuth()
-    } catch {
+      if (data.session) {
+        // Wait for session to be stored then redirect
+        await new Promise(r => setTimeout(r, 1000))
+        window.location.href = '/home'
+      } else {
+        setError('Login failed. Please try again.')
+        setLoading(false)
+      }
+    } catch (err) {
+      console.error(err)
       setError('Something went wrong. Please try again.')
       setLoading(false)
     }
@@ -116,34 +99,45 @@ export default function LandingPage() {
     e.preventDefault()
     setError('')
     const { firstName, lastName, username, phone, email, password } = suData
-    if (!firstName) { setError('Please enter your first name.'); return }
-    if (!username || username.length < 3) { setError('Please choose a username (min. 3 characters).'); return }
+    if (!firstName) { setError('First name is required.'); return }
+    if (!username || username.length < 3) { setError('Choose a username (min 3 characters).'); return }
     if (unStatus !== 'available') { setError('That username is not available.'); return }
-    if (!phone) { setError('Please enter your phone number.'); return }
-    if (!email) { setError('Please enter your email address.'); return }
+    if (!phone) { setError('Phone number is required.'); return }
+    if (!email) { setError('Email is required.'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
     setLoading(true)
 
     try {
-      const { data: existing } = await sb.from('profiles').select('id').eq('username', username).maybeSingle()
-      if (existing) { setError(`@${username} was just taken.`); setLoading(false); return }
+      // Check username one more time
+      const { data: existing } = await sb
+        .from('profiles').select('id').eq('username', username).maybeSingle()
+      if (existing) {
+        setError(`@${username} was just taken. Choose another.`)
+        setLoading(false)
+        return
+      }
 
       const { data, error: signUpErr } = await sb.auth.signUp({
-        email,
+        email: email.trim(),
         password,
         options: {
-          emailRedirectTo: `${APP_ORIGIN}/auth/callback?next=${encodeURIComponent(HOME_PATH)}`,
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-            username,
-            phone,
-          },
-        },
+          data: { full_name: `${firstName} ${lastName}`.trim() }
+        }
       })
-      if (signUpErr) { setError(signUpErr.message); setLoading(false); return }
-      if (!data.user) { setError('Something went wrong. Please try again.'); setLoading(false); return }
 
+      if (signUpErr) {
+        setError(signUpErr.message)
+        setLoading(false)
+        return
+      }
+
+      if (!data.user) {
+        setError('Something went wrong. Please try again.')
+        setLoading(false)
+        return
+      }
+
+      // Save profile to database
       const fullName = `${firstName} ${lastName}`.trim()
       const initials = firstName[0].toUpperCase() + (lastName ? lastName[0].toUpperCase() : '')
 
@@ -154,14 +148,16 @@ export default function LandingPage() {
         initials,
         username,
         phone,
-        joined_at: new Date().toISOString()
+        joined_at: new Date().toISOString(),
       }, { onConflict: 'id' })
 
       if (data.session) {
-        // Email confirmation is OFF — session exists immediately
-        await goToHomeAfterAuth()
+        // Email confirm is OFF — session created immediately
+        // Wait for session cookie to be written
+        await new Promise(r => setTimeout(r, 1200))
+        window.location.href = '/home'
       } else {
-        // Email confirmation is ON — show message
+        // Email confirm is ON — show check email message
         setSignupDone(true)
         setLoading(false)
       }
@@ -183,10 +179,12 @@ export default function LandingPage() {
             Gopexly
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => openModal('signin')} className="text-[13px] font-semibold text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-all">
+            <button onClick={() => openModal('signin')}
+              className="text-[13px] font-semibold text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-all">
               Sign In
             </button>
-            <button onClick={() => openModal('signup')} className="text-[13px] font-bold bg-primary text-white px-5 py-2.5 rounded-xl hover:bg-primary-dark transition-all shadow-sm">
+            <button onClick={() => openModal('signup')}
+              className="text-[13px] font-bold bg-primary text-white px-5 py-2.5 rounded-xl hover:bg-primary-dark transition-all shadow-sm">
               Get Started →
             </button>
           </div>
@@ -211,10 +209,12 @@ export default function LandingPage() {
             Track NGX stocks, share investment insights, and grow your wealth alongside a community of investors.
           </p>
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            <button onClick={() => openModal('signup')} className="bg-primary text-white text-[15px] font-bold px-8 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg hover:-translate-y-0.5">
+            <button onClick={() => openModal('signup')}
+              className="bg-primary text-white text-[15px] font-bold px-8 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg hover:-translate-y-0.5">
               Start Investing Free →
             </button>
-            <button onClick={() => openModal('signin')} className="text-[15px] font-semibold text-gray-700 px-8 py-4 rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all">
+            <button onClick={() => openModal('signin')}
+              className="text-[15px] font-semibold text-gray-700 px-8 py-4 rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all">
               Sign In
             </button>
           </div>
@@ -225,8 +225,12 @@ export default function LandingPage() {
       {/* FEATURES */}
       <section className="py-20 px-5 bg-gray-50">
         <div className="max-w-5xl mx-auto">
-          <h2 className="font-display text-[32px] font-extrabold text-center text-gray-900 mb-3">Everything you need to invest smarter</h2>
-          <p className="text-center text-gray-500 mb-12 text-[15px]">Built specifically for the Nigerian Exchange and African markets</p>
+          <h2 className="font-display text-[32px] font-extrabold text-center text-gray-900 mb-3">
+            Everything you need to invest smarter
+          </h2>
+          <p className="text-center text-gray-500 mb-12 text-[15px]">
+            Built specifically for the Nigerian Exchange and African markets
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { icon: '📈', title: 'Live NGX Prices', desc: '124 stocks tracked in real-time from the Nigerian Exchange Group.' },
@@ -249,9 +253,12 @@ export default function LandingPage() {
       {/* CTA */}
       <section className="py-20 px-5 text-center">
         <div className="max-w-xl mx-auto">
-          <h2 className="font-display text-[32px] font-extrabold text-gray-900 mb-4">Ready to start investing smarter?</h2>
+          <h2 className="font-display text-[32px] font-extrabold text-gray-900 mb-4">
+            Ready to start investing smarter?
+          </h2>
           <p className="text-gray-500 mb-8 text-[15px]">Join thousands of African investors already on Gopexly.</p>
-          <button onClick={() => openModal('signup')} className="bg-primary text-white text-[15px] font-bold px-10 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg">
+          <button onClick={() => openModal('signup')}
+            className="bg-primary text-white text-[15px] font-bold px-10 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg">
             Create Free Account →
           </button>
         </div>
@@ -295,18 +302,22 @@ export default function LandingPage() {
                   <div className="text-4xl mb-3">📧</div>
                   <div className="font-display text-[16px] font-extrabold mb-2">Check your email!</div>
                   <div className="text-[13px] text-gray-500 mb-4">
-                    We sent a confirmation link to <strong>{suData.email}</strong>. Click it to activate your account.
+                    We sent a confirmation link to <strong>{suData.email}</strong>.
                   </div>
-                  <div className="text-[11px] text-amber bg-amber-bg p-3 rounded-xl">
-                    To skip email confirmation: Supabase → Authentication → Providers → Email → turn off &quot;Confirm email&quot;
-                  </div>
+                  <button onClick={() => { setSignupDone(false); setMode('signin') }}
+                    className="text-[13px] font-bold text-primary">
+                    Back to Sign In
+                  </button>
                 </div>
               ) : (
                 <>
                   {error && (
-                    <div className="bg-loss-bg border border-loss-border text-loss text-[13px] font-medium px-4 py-3 rounded-xl mb-4">{error}</div>
+                    <div className="bg-loss-bg border border-loss-border text-loss text-[13px] font-medium px-4 py-3 rounded-xl mb-4">
+                      {error}
+                    </div>
                   )}
 
+                  {/* SIGN IN */}
                   {mode === 'signin' && (
                     <form onSubmit={doSignIn} className="flex flex-col gap-4">
                       <div>
@@ -327,11 +338,14 @@ export default function LandingPage() {
                       </button>
                       <p className="text-center text-[12px] text-gray-400">
                         Don&apos;t have an account?{' '}
-                        <button type="button" onClick={() => setMode('signup')} className="text-primary font-semibold">Create one</button>
+                        <button type="button" onClick={() => setMode('signup')} className="text-primary font-semibold">
+                          Create one
+                        </button>
                       </p>
                     </form>
                   )}
 
+                  {/* SIGN UP */}
                   {mode === 'signup' && (
                     <form onSubmit={doSignUp} className="flex flex-col gap-3">
                       <div className="grid grid-cols-2 gap-3">
@@ -359,7 +373,8 @@ export default function LandingPage() {
                             placeholder="adaeze_invests" autoComplete="off"
                             className={`w-full bg-gray-50 border-[1.5px] text-gray-900 pl-7 pr-8 py-2.5 rounded-xl text-[13px] outline-none transition-all focus:bg-white ${
                               unStatus === 'available' ? 'border-gain' :
-                              unStatus === 'taken' || unStatus === 'invalid' ? 'border-loss' : 'border-gray-200 focus:border-primary'}`} />
+                              unStatus === 'taken' || unStatus === 'invalid' ? 'border-loss' :
+                              'border-gray-200 focus:border-primary'}`} />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[15px]">
                             {unStatus === 'checking' ? '⏳' : unStatus === 'available' ? '✓' : unStatus === 'taken' || unStatus === 'invalid' ? '✗' : ''}
                           </span>
@@ -395,7 +410,9 @@ export default function LandingPage() {
                         {loading ? 'Creating account...' : 'Create my account →'}
                       </button>
                       <p className="text-center text-[11px] text-gray-400">
-                        By signing up you agree to our <a href="#" className="text-primary">Terms</a> &amp; <a href="#" className="text-primary">Privacy Policy</a>
+                        By signing up you agree to our{' '}
+                        <a href="#" className="text-primary">Terms</a> &amp;{' '}
+                        <a href="#" className="text-primary">Privacy Policy</a>
                       </p>
                     </form>
                   )}
