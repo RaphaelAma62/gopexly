@@ -50,13 +50,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Logged in + trying to access landing page → redirect to home
-  if (user && pathname === '/') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/home'
-    return NextResponse.redirect(url)
-  }
-
   // Admin routes — check role
   if (user && ADMIN_ROUTES.some(r => pathname.startsWith(r))) {
     const { data: profile } = await supabase
