@@ -157,7 +157,7 @@ export default function HomeFeed() {
       }
       const { data, error } = await query
       if (error) throw error
-      const postsData = (data || []) as Post[]
+      const postsData = (data || []) as unknown as Post[]
       setPosts(postsData)
       if (postsData.length) {
         const imgMap: Record<string, string[]> = {}
