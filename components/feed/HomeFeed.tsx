@@ -11,13 +11,25 @@ import type { Post, Holding, Goal, Profile, Comment } from '@/types'
 import Link from 'next/link'
 
 type FeedTab = 'fy' | 'fl' | 'nw'
-
 interface PendingTicker { ticker: string; name: string }
 interface PendingImage { file: File; dataUrl: string }
-type SupabaseRelation<T> = T | T[] | null | undefined
 
-function oneRelation<T>(relation: SupabaseRelation<T>): T | undefined {
-  return Array.isArray(relation) ? relation[0] : relation ?? undefined
+// Clean HTML entities from post body
+function cleanBody(text: string): string {
+  return text
+    .replace(/&#128240;/g, '📰')
+    .replace(/&#128203;/g, '📋')
+    .replace(/&#128200;/g, '📈')
+    .replace(/&#127891;/g, '🎓')
+    .replace(/&#128188;/g, '💼')
+    .replace(/&#128683;/g, '🚫')
+    .replace(/&#9733;/g, '★')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
 }
 
 export default function HomeFeed() {
@@ -56,7 +68,6 @@ export default function HomeFeed() {
 
   const [editPostId, setEditPostId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
-
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [postImages, setPostImages] = useState<Record<string, string[]>>({})
   const [openComments, setOpenComments] = useState<Set<string>>(new Set())
@@ -64,10 +75,22 @@ export default function HomeFeed() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({})
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set())
 
+  // Post detail modal
+  const [openPost, setOpenPost] = useState<Post | null>(null)
+  const [openPostComments, setOpenPostComments] = useState<Comment[]>([])
+  const [openPostComment, setOpenPostComment] = useState('')
+  const [openPostImages, setOpenPostImages] = useState<string[]>([])
+
+  // User profile modal
+  const [profileUserId, setProfileUserId] = useState<string | null>(null)
+  const [profileData, setProfileData] = useState<Profile | null>(null)
+  const [profilePosts, setProfilePosts] = useState<Post[]>([])
+  const [profileStats, setProfileStats] = useState({ holdings: 0, followers: 0, following: 0 })
+  const [profileLoading, setProfileLoading] = useState(false)
+
   const imgInputRef = useRef<HTMLInputElement>(null)
   const tkTimer = useRef<NodeJS.Timeout | null>(null)
 
-  // ── INIT ─────────────────────────────────────
   useEffect(() => {
     if (!user) return
     loadPortfolio()
@@ -97,7 +120,6 @@ export default function HomeFeed() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, tab])
 
-  // ── PORTFOLIO ────────────────────────────────
   async function loadPortfolio() {
     if (!user) return
     const { data } = await sb.from('holdings').select('*').eq('user_id', user.id)
@@ -123,14 +145,11 @@ export default function HomeFeed() {
 
   async function loadSuggested() {
     if (!user) return
-    const { data } = await sb
-      .from('profiles')
+    const { data } = await sb.from('profiles')
       .select('id,name,initials,portfolio_pct_gain,share_performance,followers_count')
-      .neq('id', user.id)
-      .eq('share_performance', true)
+      .neq('id', user.id).eq('share_performance', true)
       .not('portfolio_pct_gain', 'is', null)
-      .order('portfolio_pct_gain', { ascending: false })
-      .limit(3)
+      .order('portfolio_pct_gain', { ascending: false }).limit(3)
     setSuggested((data || []) as Profile[])
   }
 
@@ -140,44 +159,31 @@ export default function HomeFeed() {
     setFollowedIds(new Set((data || []).map((f: { following_id: string }) => f.following_id)))
   }
 
-  // ── FEED ─────────────────────────────────────
   async function loadFeed(t: FeedTab) {
     if (!user) return
-    setFeedLoading(true)
-    setFeedError('')
+    setFeedLoading(true); setFeedError('')
     try {
       if (t === 'nw') {
-        const { data, error } = await sb
-          .from('news_posts')
+        const { data, error } = await sb.from('news_posts')
           .select('*, profiles!news_posts_author_id_fkey(name)')
-          .order('created_at', { ascending: false })
-          .limit(30)
+          .order('created_at', { ascending: false }).limit(30)
         if (error) throw error
         setNews(data || [])
-        setFeedLoading(false)
-        return
+        setFeedLoading(false); return
       }
-
-      let query = sb
-        .from('posts')
+      let query = sb.from('posts')
         .select('id,user_id,body,ticker_holdings,portfolio_pct_gain,portfolio_period,likes_count,comments_count,created_at,profiles!posts_user_id_fkey(name,initials,role,share_performance,portfolio_pct_gain)')
-        .order('created_at', { ascending: false })
-        .limit(40)
-
+        .order('created_at', { ascending: false }).limit(40)
       if (t === 'fl') {
         const { data: follows } = await sb.from('follows').select('following_id').eq('follower_id', user.id)
         const ids = (follows || []).map((f: { following_id: string }) => f.following_id)
         if (!ids.length) { setPosts([]); setFeedLoading(false); return }
         query = query.in('user_id', ids)
       }
-
       const { data, error } = await query
       if (error) throw error
-      const postsData = ((data || []) as (Omit<Post, 'profiles'> & { profiles: SupabaseRelation<Post['profiles']> })[])
-        .map(p => ({ ...p, profiles: oneRelation(p.profiles) }))
+      const postsData = (data || []) as Post[]
       setPosts(postsData)
-
-      // Load images
       if (postsData.length) {
         const imgMap: Record<string, string[]> = {}
         await Promise.all(postsData.map(async p => {
@@ -186,8 +192,6 @@ export default function HomeFeed() {
         }))
         setPostImages(imgMap)
       }
-
-      // Liked posts
       const { data: likes } = await sb.from('likes').select('post_id').eq('user_id', user.id)
       setLikedPosts(new Set((likes || []).map((l: { post_id: string }) => l.post_id)))
     } catch (e: unknown) {
@@ -196,7 +200,47 @@ export default function HomeFeed() {
     setFeedLoading(false)
   }
 
-  // ── COMPOSE ──────────────────────────────────
+  // Open post detail
+  async function openPostDetail(post: Post) {
+    setOpenPost(post)
+    setOpenPostImages(postImages[post.id] || [])
+    const { data } = await sb.from('comments')
+      .select('*,profiles!comments_user_id_fkey(name,initials)')
+      .eq('post_id', post.id).order('created_at', { ascending: true })
+    setOpenPostComments((data || []) as Comment[])
+  }
+
+  async function submitOpenPostComment() {
+    if (!openPostComment.trim() || !user || !openPost) return
+    const text = openPostComment.trim()
+    setOpenPostComment('')
+    const { data } = await sb.from('comments')
+      .insert({ post_id: openPost.id, user_id: user.id, body: text })
+      .select('*,profiles!comments_user_id_fkey(name,initials)').single()
+    if (data) {
+      setOpenPostComments(prev => [...prev, data as Comment])
+      setPosts(prev => prev.map(p => p.id === openPost.id ? { ...p, comments_count: p.comments_count + 1 } : p))
+    }
+  }
+
+  // Open user profile
+  async function openUserProfile(uid: string) {
+    if (uid === user?.id) { window.location.href = '/profile'; return }
+    setProfileUserId(uid)
+    setProfileLoading(true)
+    const [profRes, postsRes, holdRes, follRes, follngRes] = await Promise.all([
+      sb.from('profiles').select('*').eq('id', uid).single(),
+      sb.from('posts').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(10),
+      sb.from('holdings').select('id', { count: 'exact', head: true }).eq('user_id', uid),
+      sb.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', uid),
+      sb.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', uid),
+    ])
+    setProfileData((profRes.data || null) as Profile | null)
+    setProfilePosts((postsRes.data || []) as Post[])
+    setProfileStats({ holdings: holdRes.count || 0, followers: follRes.count || 0, following: follngRes.count || 0 })
+    setProfileLoading(false)
+  }
+
   function handleImages(files: FileList | null) {
     if (!files) return
     Array.from(files).slice(0, 4 - pendingImages.length).forEach(file => {
@@ -212,18 +256,13 @@ export default function HomeFeed() {
     if (!q) { setTkResults([]); return }
     tkTimer.current = setTimeout(() => {
       const upper = q.toUpperCase()
-      setTkResults(
-        Object.keys(prices)
-          .filter(t => t.includes(upper) || prices[t].company_name.toUpperCase().includes(upper))
-          .slice(0, 8)
-      )
+      setTkResults(Object.keys(prices).filter(t => t.includes(upper) || prices[t].company_name.toUpperCase().includes(upper)).slice(0, 8))
     }, 200)
   }
 
   function addTicker(ticker: string) {
-    if (!pendingTickers.find(t => t.ticker === ticker)) {
+    if (!pendingTickers.find(t => t.ticker === ticker))
       setPendingTickers(prev => [...prev, { ticker, name: prices[ticker]?.company_name || ticker }])
-    }
     setTkQuery(''); setTkResults([]); setShowTkSearch(false)
   }
 
@@ -231,7 +270,6 @@ export default function HomeFeed() {
     if (!postText.trim() || !user) return
     if (postText.length > 500) { showToast('Post too long — max 500 characters', 'err'); return }
     setPosting(true)
-
     const tkPayload = pendingTickers.map(t => {
       const myH = holdings.find(h => h.ticker === t.ticker)
       let myPct = null
@@ -241,18 +279,12 @@ export default function HomeFeed() {
       }
       return { ticker: t.ticker, i_hold: !!myH, my_pct: myPct }
     })
-
     const { data: newPost, error } = await sb.from('posts').insert({
-      user_id: user.id,
-      body: postText.trim(),
-      ticker_holdings: tkPayload,
+      user_id: user.id, body: postText.trim(), ticker_holdings: tkPayload,
       portfolio_pct_gain: sharePerf && myPctGain !== null ? myPctGain : null,
       portfolio_period: sharePerf ? 'all-time' : null,
     }).select().single()
-
     if (error) { showToast('Error: ' + error.message, 'err'); setPosting(false); return }
-
-    // Upload images in background
     if (pendingImages.length && newPost) {
       pendingImages.forEach(async (pi, i) => {
         const path = `posts/${newPost.id}/${Date.now()}-${i}.jpg`
@@ -263,11 +295,8 @@ export default function HomeFeed() {
         }
       })
     }
-
-    if (sharePerf && myPctGain !== null) {
+    if (sharePerf && myPctGain !== null)
       await sb.from('profiles').update({ share_performance: true, portfolio_pct_gain: myPctGain }).eq('id', user.id)
-    }
-
     const optimistic: Post = {
       ...(newPost as Post),
       profiles: { name: user.name, initials: user.initials, role: user.role, share_performance: sharePerf, portfolio_pct_gain: sharePerf ? myPctGain : null }
@@ -275,11 +304,9 @@ export default function HomeFeed() {
     setPosts(prev => [optimistic, ...prev])
     setPostText(''); setPendingImages([]); setPendingTickers([])
     setSharePerf(false); setShowTkSearch(false); setShowPerfRow(false)
-    setPosting(false)
-    showToast('Posted!', 'ok')
+    setPosting(false); showToast('Posted!', 'ok')
   }
 
-  // ── INTERACTIONS ─────────────────────────────
   async function toggleLike(postId: string) {
     if (!user) return
     const liked = likedPosts.has(postId)
@@ -331,15 +358,13 @@ export default function HomeFeed() {
     if (!editPostId || !editText.trim()) return
     await sb.from('posts').update({ body: editText.trim() }).eq('id', editPostId).eq('user_id', user?.id || '')
     setPosts(prev => prev.map(p => p.id === editPostId ? { ...p, body: editText.trim() } : p))
-    setEditPostId(null)
-    showToast('Post updated', 'ok')
+    setEditPostId(null); showToast('Post updated', 'ok')
   }
 
   function copyLink() {
     const url = `${window.location.origin}/home?post=${sharePostId}`
     navigator.clipboard.writeText(url)
-    setShareCopied(true)
-    setTimeout(() => setShareCopied(false), 2000)
+    setShareCopied(true); setTimeout(() => setShareCopied(false), 2000)
   }
 
   function shareTo(platform: string) {
@@ -355,12 +380,10 @@ export default function HomeFeed() {
     setSharePostId(null)
   }
 
-  const pfVal = portfolioValue >= 1_000_000
-    ? `₦${(portfolioValue / 1_000_000).toFixed(2)}M`
+  const pfVal = portfolioValue >= 1_000_000 ? `₦${(portfolioValue / 1_000_000).toFixed(2)}M`
     : portfolioValue >= 1_000 ? `₦${(portfolioValue / 1_000).toFixed(0)}K`
     : `₦${portfolioValue.toFixed(0)}`
 
-  // ── RENDER ────────────────────────────────────
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[252px_1fr] xl:grid-cols-[252px_1fr_268px] min-h-[calc(100vh-60px)]">
 
@@ -368,9 +391,7 @@ export default function HomeFeed() {
       <aside className="hidden lg:block bg-surface border-r border-border p-3.5 sticky top-[60px] h-[calc(100vh-60px)] overflow-y-auto">
         <div className="bg-gradient-to-br from-primary to-primary-dark rounded-[13px] p-4 text-white mb-3.5">
           <div className="text-[9px] opacity-70 uppercase tracking-wide mb-1">Portfolio</div>
-          <div className="font-display text-[22px] font-extrabold tracking-tight mb-0.5">
-            {portfolioValue > 0 ? pfVal : '₦0'}
-          </div>
+          <div className="font-display text-[22px] font-extrabold tracking-tight mb-0.5">{portfolioValue > 0 ? pfVal : '₦0'}</div>
           {myPctGain !== null
             ? <div className="text-[11px] bg-white/15 inline-block px-2 py-0.5 rounded-full">{myPctGain >= 0 ? '+' : ''}{myPctGain.toFixed(2)}% return</div>
             : <div className="text-[11px] opacity-60">No holdings yet</div>}
@@ -414,7 +435,6 @@ export default function HomeFeed() {
 
       {/* CENTER */}
       <main className="border-r border-border min-h-[calc(100vh-60px)]">
-        {/* Header */}
         <div className="bg-surface border-b border-border px-[18px] py-3.5">
           <div className="flex justify-between items-start">
             <div>
@@ -448,15 +468,10 @@ export default function HomeFeed() {
           <div className="flex gap-2.5 items-start">
             <Avatar initials={user?.initials || '?'} size="lg" />
             <div className="flex-1">
-              <textarea
-                value={postText}
-                onChange={e => setPostText(e.target.value)}
+              <textarea value={postText} onChange={e => setPostText(e.target.value)}
                 placeholder="What's your investment move today? Share insights, stock picks, portfolio wins..."
-                rows={2}
-                maxLength={500}
-                className="w-full bg-gray-50 border-2 border-border text-text px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none min-h-[60px] max-h-60 transition-all focus:border-primary focus:bg-white font-sans leading-relaxed placeholder:text-text-muted"
-              />
-
+                rows={2} maxLength={500}
+                className="w-full bg-gray-50 border-2 border-border text-text px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none min-h-[60px] max-h-60 transition-all focus:border-primary focus:bg-white font-sans leading-relaxed placeholder:text-text-muted" />
               {pendingImages.length > 0 && (
                 <div className="flex gap-2 flex-wrap mt-2">
                   {pendingImages.map((img, i) => (
@@ -469,7 +484,6 @@ export default function HomeFeed() {
                   ))}
                 </div>
               )}
-
               {pendingTickers.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap mt-2">
                   {pendingTickers.map(t => (
@@ -480,7 +494,6 @@ export default function HomeFeed() {
                   ))}
                 </div>
               )}
-
               {showTkSearch && (
                 <div className="mt-2 relative">
                   <input value={tkQuery} onChange={e => searchTicker(e.target.value)}
@@ -499,7 +512,6 @@ export default function HomeFeed() {
                   )}
                 </div>
               )}
-
               {showPerfRow && (
                 <div className="mt-2 bg-gain-bg border border-gain-border rounded-xl px-3 py-2.5">
                   <label className="flex items-center gap-2 cursor-pointer text-[12px] font-semibold text-gain">
@@ -509,10 +521,8 @@ export default function HomeFeed() {
                   {sharePerf && myPctGain !== null && (
                     <div className="mt-1 text-[11px] font-bold text-gain">{myPctGain >= 0 ? '▲ +' : '▼ '}{Math.abs(myPctGain).toFixed(1)}%</div>
                   )}
-                  <div className="text-[10px] text-text-muted mt-1">Your ₦ portfolio value will never be shown.</div>
                 </div>
               )}
-
               <div className="flex items-center justify-between mt-2.5 flex-wrap gap-2">
                 <div className="flex gap-1.5 flex-wrap">
                   <label className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-muted border-[1.5px] border-border px-3 py-1.5 rounded-full cursor-pointer hover:bg-primary-light hover:text-primary hover:border-primary-border transition-all">
@@ -549,39 +559,31 @@ export default function HomeFeed() {
             <div className="text-[13px] text-text-muted">Loading posts...</div>
           </div>
         )}
-
         {feedError && !feedLoading && (
-          <div className="p-8 text-center">
-            <div className="text-2xl mb-2">⚠️</div>
-            <div className="text-[14px] font-semibold text-loss">{feedError}</div>
-          </div>
+          <div className="p-8 text-center"><div className="text-2xl mb-2">⚠️</div><div className="text-[14px] font-semibold text-loss">{feedError}</div></div>
         )}
-
         {!feedLoading && tab === 'nw' && (
           !news.length
             ? <EmptyState icon="📰" title="No news yet" subtitle="Admins will post market news here" />
             : news.map(n => (
-              <div key={n.id} className="bg-surface px-[18px] py-3.5 border-b border-border hover:bg-gray-50">
-                <div className="text-[9px] font-bold text-text-muted uppercase tracking-wide mb-1">
-                  Gopexly News · {n.profiles?.name || 'Admin'}
+              <div key={n.id} className="bg-surface px-[18px] py-4 border-b border-border hover:bg-gray-50 cursor-pointer">
+                <div className="text-[9px] font-bold text-text-muted uppercase tracking-wide mb-1.5">
+                  📰 Gopexly News · {n.profiles?.name || 'Admin'} · {fmtTime(n.created_at)}
                 </div>
-                <div className="text-[13px] font-semibold text-text leading-snug">{n.title}</div>
-                {n.body && <div className="text-[12px] text-text-secondary mt-1 line-clamp-2">{n.body}</div>}
-                <div className="text-[10px] text-text-muted mt-1.5">{fmtTime(n.created_at)}</div>
+                <div className="text-[14px] font-bold text-text mb-1.5">{n.title}</div>
+                {n.body && <div className="text-[13px] text-text-secondary leading-relaxed line-clamp-3">{cleanBody(n.body)}</div>}
+                {n.source && <div className="text-[11px] text-primary mt-1.5 font-semibold">Source: {n.source}</div>}
               </div>
             ))
         )}
-
         {!feedLoading && tab === 'fl' && !posts.length && !feedError && (
           <EmptyState icon="👥" title="Follow investors to see their posts" />
         )}
-
         {!feedLoading && (tab === 'fy' || tab === 'fl') && (
           !posts.length && !feedError
             ? <EmptyState icon="📋" title="No posts yet" subtitle="Be the first to post something!" />
             : posts.map(p => (
-              <PostCard
-                key={p.id} post={p}
+              <PostCard key={p.id} post={p}
                 myId={user?.id || ''} myInitials={user?.initials || '?'}
                 images={postImages[p.id] || []}
                 liked={likedPosts.has(p.id)}
@@ -600,6 +602,8 @@ export default function HomeFeed() {
                 onEdit={() => { setEditPostId(p.id); setEditText(p.body) }}
                 onDelete={() => deletePost(p.id)}
                 onImageClick={url => setLightboxUrl(url)}
+                onOpenPost={() => openPostDetail(p)}
+                onOpenProfile={() => openUserProfile(p.user_id)}
               />
             ))
         )}
@@ -614,7 +618,8 @@ export default function HomeFeed() {
             const pct = inv.portfolio_pct_gain ?? 0
             const up = pct >= 0
             return (
-              <div key={inv.id} className="bg-gray-50 border border-border rounded-xl p-3 mb-2.5 hover:bg-white hover:shadow-sm transition-all">
+              <div key={inv.id} onClick={() => openUserProfile(inv.id)}
+                className="bg-gray-50 border border-border rounded-xl p-3 mb-2.5 hover:bg-white hover:shadow-sm transition-all cursor-pointer">
                 <div className="flex items-center gap-2 mb-2">
                   <Avatar initials={inv.initials || (inv.name?.charAt(0) || 'U')} size="md" />
                   <div>
@@ -625,8 +630,7 @@ export default function HomeFeed() {
                 <div className={cn('text-[13px] font-extrabold mb-1.5', up ? 'text-gain' : 'text-loss')}>
                   {up ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}% return
                 </div>
-                <div className="text-[9px] text-text-muted mb-2">🔒 Portfolio value is private</div>
-                <button onClick={() => toggleFollow(inv.id)}
+                <button onClick={e => { e.stopPropagation(); toggleFollow(inv.id) }}
                   className={cn('w-full py-1.5 rounded-lg text-[11px] font-bold transition-all',
                     followedIds.has(inv.id) ? 'bg-gray-100 text-text-muted border border-border' : 'bg-primary-light border border-primary-border text-primary hover:bg-primary hover:text-white')}>
                   {followedIds.has(inv.id) ? 'Following ✓' : '+ Follow'}
@@ -646,6 +650,204 @@ export default function HomeFeed() {
           </div>
         </div>
       </aside>
+
+      {/* POST DETAIL MODAL */}
+      {openPost && (
+        <div className="fixed inset-0 bg-black/50 z-[500] flex items-center justify-center backdrop-blur-sm p-4"
+          onClick={e => { if (e.target === e.currentTarget) setOpenPost(null) }}>
+          <div className="bg-white rounded-2xl w-full max-w-[600px] max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <button onClick={() => { setOpenPost(null); openUserProfile(openPost.user_id) }}
+                  className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center text-[12px] font-bold hover:bg-primary-dark transition-colors">
+                  {openPost.profiles?.initials || openPost.profiles?.name?.charAt(0) || 'U'}
+                </button>
+                <div>
+                  <div className="text-[13px] font-bold cursor-pointer hover:text-primary"
+                    onClick={() => { setOpenPost(null); openUserProfile(openPost.user_id) }}>
+                    {openPost.profiles?.name || 'User'}
+                  </div>
+                  <div className="text-[11px] text-text-muted">{fmtTime(openPost.created_at)}</div>
+                </div>
+              </div>
+              <button onClick={() => setOpenPost(null)} className="w-7 h-7 bg-gray-100 rounded-lg text-[12px] flex items-center justify-center hover:bg-gray-200">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {openPost.portfolio_pct_gain != null && (
+                <div className={cn('inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full mb-3 border',
+                  openPost.portfolio_pct_gain >= 0 ? 'bg-gain-bg text-gain border-gain-border' : 'bg-loss-bg text-loss border-loss-border')}>
+                  {openPost.portfolio_pct_gain >= 0 ? '▲' : '▼'} {Math.abs(openPost.portfolio_pct_gain).toFixed(1)}% portfolio return
+                </div>
+              )}
+              <div className="text-[15px] text-text leading-relaxed mb-4 whitespace-pre-wrap">{cleanBody(openPost.body)}</div>
+              {openPostImages.length > 0 && (
+                <div className={cn('grid gap-2 mb-4 rounded-xl overflow-hidden',
+                  openPostImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                  {openPostImages.map((url, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={i} src={url} alt="" className="w-full object-cover rounded-xl cursor-pointer max-h-[300px]"
+                      onClick={() => setLightboxUrl(url)} />
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-3 py-3 border-t border-b border-border mb-4">
+                <button onClick={() => toggleLike(openPost.id)}
+                  className={cn('flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-lg transition-all hover:bg-gray-100',
+                    likedPosts.has(openPost.id) ? 'text-loss' : 'text-text-muted')}>
+                  {likedPosts.has(openPost.id) ? '❤️' : '🤍'} {openPost.likes_count}
+                </button>
+                <span className="text-[13px] text-text-muted">💬 {openPostComments.length} comments</span>
+              </div>
+              <div className="flex flex-col gap-3">
+                {openPostComments.map(c => (
+                  <div key={c.id} className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-bold flex-shrink-0 text-text-secondary">
+                      {c.profiles?.initials || c.profiles?.name?.charAt(0) || 'U'}
+                    </div>
+                    <div className="bg-gray-50 rounded-2xl px-3.5 py-2.5 flex-1">
+                      <div className="text-[12px] font-bold mb-0.5">{c.profiles?.name || 'User'}</div>
+                      <div className="text-[13px] text-text-secondary leading-snug">{c.body}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 px-5 py-3.5 border-t border-border flex-shrink-0">
+              <Avatar initials={user?.initials || '?'} size="sm" />
+              <input value={openPostComment} onChange={e => setOpenPostComment(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitOpenPostComment() }}
+                placeholder="Write a comment..."
+                className="flex-1 bg-gray-50 border-[1.5px] border-border text-text px-3.5 py-2.5 rounded-full text-[13px] outline-none focus:border-primary" />
+              <button onClick={submitOpenPostComment}
+                className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-colors text-[14px]">→</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* USER PROFILE MODAL */}
+      {profileUserId && (
+        <div className="fixed inset-0 bg-black/50 z-[500] flex items-center justify-center backdrop-blur-sm p-4"
+          onClick={e => { if (e.target === e.currentTarget) setProfileUserId(null) }}>
+          <div className="bg-white rounded-2xl w-full max-w-[520px] max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            {profileLoading ? (
+              <div className="flex items-center justify-center py-20"><Spinner className="text-primary" /></div>
+            ) : profileData ? (
+              <>
+                {/* Cover */}
+                <div className="h-[90px] bg-gradient-to-r from-primary to-primary-dark relative flex-shrink-0">
+                  <button onClick={() => setProfileUserId(null)}
+                    className="absolute top-3 right-3 w-7 h-7 bg-black/30 rounded-lg text-white text-[12px] flex items-center justify-center hover:bg-black/50">✕</button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto">
+                  {/* Profile header */}
+                  <div className="px-5 pb-4">
+                    <div className="flex items-end justify-between -mt-8 mb-4">
+                      <div className="w-[64px] h-[64px] rounded-full bg-primary border-4 border-white text-white flex items-center justify-center text-[20px] font-extrabold shadow-lg">
+                        {profileData.initials || profileData.name?.charAt(0) || 'U'}
+                      </div>
+                      <button onClick={() => toggleFollow(profileData.id)}
+                        className={cn('px-5 py-2 rounded-xl text-[13px] font-bold transition-all mt-10',
+                          followedIds.has(profileData.id)
+                            ? 'bg-gray-100 text-text-secondary border border-border hover:bg-gray-200'
+                            : 'bg-primary text-white hover:bg-primary-dark')}>
+                        {followedIds.has(profileData.id) ? '✓ Following' : '+ Follow'}
+                      </button>
+                    </div>
+
+                    <div className="mb-1">
+                      <div className="font-display text-[18px] font-extrabold flex items-center gap-2">
+                        {profileData.name || 'User'}
+                        {profileData.is_verified && (
+                          <span className="text-[10px] bg-primary-light text-primary px-2 py-0.5 rounded-full font-bold">✓ Verified</span>
+                        )}
+                        {profileData.role === 'admin' && (
+                          <span className="text-[10px] bg-[#1e1b4b] text-[#a5b4fc] px-2 py-0.5 rounded-full font-bold">🛡 Admin</span>
+                        )}
+                      </div>
+                      {profileData.username && (
+                        <div className="text-[13px] text-text-muted">@{profileData.username}</div>
+                      )}
+                    </div>
+
+                    {profileData.bio && (
+                      <div className="text-[13px] text-text-secondary leading-relaxed mb-3">{profileData.bio}</div>
+                    )}
+
+                    <div className="flex flex-wrap gap-3 text-[12px] text-text-muted mb-4">
+                      {profileData.location && <span>📍 {profileData.location}</span>}
+                      {profileData.country && <span>🌍 {profileData.country}</span>}
+                      {profileData.joined_at && <span>📅 Joined {new Date(profileData.joined_at).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' })}</span>}
+                    </div>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-3 gap-3 mb-5">
+                      {[
+                        { label: 'Holdings', value: profileStats.holdings, icon: '💼' },
+                        { label: 'Followers', value: profileStats.followers, icon: '👥' },
+                        { label: 'Following', value: profileStats.following, icon: '➡️' },
+                      ].map(s => (
+                        <div key={s.label} className="bg-gray-50 border border-border rounded-xl py-3 px-2 text-center">
+                          <div className="text-lg mb-0.5">{s.icon}</div>
+                          <div className="font-display text-[18px] font-extrabold">{s.value}</div>
+                          <div className="text-[10px] text-text-muted uppercase tracking-wide">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Portfolio performance */}
+                    {profileData.share_performance && profileData.portfolio_pct_gain !== null && (
+                      <div className={cn('flex items-center gap-2 px-4 py-3 rounded-xl mb-5 border',
+                        (profileData.portfolio_pct_gain ?? 0) >= 0 ? 'bg-gain-bg border-gain-border' : 'bg-loss-bg border-loss-border')}>
+                        <span className="text-[20px]">📈</span>
+                        <div>
+                          <div className={cn('font-display text-[16px] font-extrabold',
+                            (profileData.portfolio_pct_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss')}>
+                            {(profileData.portfolio_pct_gain ?? 0) >= 0 ? '+' : ''}{profileData.portfolio_pct_gain?.toFixed(2)}% return
+                          </div>
+                          <div className="text-[10px] text-text-muted">🔒 ₦ value is private — % only</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Posts */}
+                    <div className="font-display text-[13px] font-extrabold mb-3">Recent Posts</div>
+                    {profilePosts.length === 0 ? (
+                      <div className="text-center py-8 text-text-muted">
+                        <div className="text-3xl mb-2">📋</div>
+                        <div className="text-[13px]">No posts yet</div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {profilePosts.map(p => (
+                          <div key={p.id} onClick={() => { setProfileUserId(null); openPostDetail(p) }}
+                            className="bg-gray-50 border border-border rounded-xl px-4 py-3 cursor-pointer hover:bg-primary-light hover:border-primary-border transition-all">
+                            <div className="text-[13px] text-text-secondary leading-relaxed line-clamp-2 mb-2">
+                              {cleanBody(p.body)}
+                            </div>
+                            <div className="flex items-center gap-4 text-[11px] text-text-muted">
+                              <span>❤️ {p.likes_count}</span>
+                              <span>💬 {p.comments_count}</span>
+                              <span>{fmtTime(p.created_at)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-text-muted">
+                <div className="text-4xl mb-3">👤</div>
+                <div className="text-[14px] font-semibold">User not found</div>
+                <button onClick={() => setProfileUserId(null)} className="mt-4 text-primary text-[13px] font-semibold">Close</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* SHARE SHEET */}
       {sharePostId && (
@@ -722,26 +924,34 @@ interface PostCardProps {
   onCommentChange: (v: string) => void; onCommentSubmit: () => void
   onReact: (emoji: string) => void; onFollow: () => void; onShare: () => void
   onEdit: () => void; onDelete: () => void; onImageClick: (url: string) => void
+  onOpenPost: () => void; onOpenProfile: () => void
 }
 
 function PostCard({ post, myId, myInitials, images, liked, commentsOpen, commentsList,
   commentInput, prices, myHoldings, portfolioValue, followedIds,
   onLike, onToggleComments, onCommentChange, onCommentSubmit,
-  onReact, onFollow, onShare, onEdit, onDelete, onImageClick }: PostCardProps) {
+  onReact, onFollow, onShare, onEdit, onDelete, onImageClick,
+  onOpenPost, onOpenProfile }: PostCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const isMe = post.user_id === myId
   const name = post.profiles?.name || 'Gopexly User'
   const initials = post.profiles?.initials || name.charAt(0).toUpperCase()
   const isAdmin = post.profiles?.role === 'admin'
   const tickers = Array.isArray(post.ticker_holdings) ? post.ticker_holdings : []
+  const cleanedBody = cleanBody(post.body)
 
   return (
     <div className="bg-surface border-b border-border px-[18px] py-3.5 hover:bg-gray-50 transition-colors">
       <div className="flex items-start gap-2.5 mb-2.5">
-        <Avatar initials={initials} size="lg" />
+        {/* Clickable avatar → profile */}
+        <button onClick={onOpenProfile}
+          className="w-[34px] h-[34px] rounded-full bg-primary text-white flex items-center justify-center text-[11px] font-bold flex-shrink-0 hover:opacity-80 transition-opacity">
+          {initials}
+        </button>
         <div className="flex-1 min-w-0">
           <div className="text-[13px] font-bold flex items-center gap-1.5 flex-wrap">
-            {name}
+            {/* Clickable name → profile */}
+            <button onClick={onOpenProfile} className="hover:text-primary transition-colors">{name}</button>
             {isAdmin && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1e1b4b] text-[#a5b4fc] font-bold">Admin</span>}
           </div>
           <div className="text-[10px] text-text-muted">{fmtTime(post.created_at)}</div>
@@ -793,15 +1003,22 @@ function PostCard({ post, myId, myInitials, images, liked, commentsOpen, comment
         </div>
       )}
 
-      <div className="text-[14px] text-text-secondary leading-relaxed mb-2 whitespace-pre-wrap break-words">{post.body}</div>
+      {/* Clickable post body → open post detail */}
+      <div onClick={onOpenPost} className="text-[14px] text-text-secondary leading-relaxed mb-2 whitespace-pre-wrap break-words cursor-pointer hover:text-text transition-colors">
+        {cleanedBody.length > 200 ? cleanedBody.substring(0, 200) + '...' : cleanedBody}
+        {cleanedBody.length > 200 && (
+          <span className="text-primary font-semibold ml-1">Read more</span>
+        )}
+      </div>
 
       {images.length > 0 && (
-        <div className={cn('grid gap-1.5 mb-2 rounded-xl overflow-hidden',
-          images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-3')}>
+        <div className={cn('grid gap-1.5 mb-2 rounded-xl overflow-hidden cursor-pointer',
+          images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-3')}
+          onClick={onOpenPost}>
           {images.slice(0, 3).map((url, i) => (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={url} alt="Post" onClick={() => onImageClick(url)}
-              className={cn('w-full object-cover cursor-pointer', images.length === 1 ? 'h-[280px]' : 'h-[200px]')} />
+            <img key={i} src={url} alt="Post" onClick={e => { e.stopPropagation(); onImageClick(url) }}
+              className={cn('w-full object-cover', images.length === 1 ? 'h-[280px]' : 'h-[160px]')} />
           ))}
         </div>
       )}
@@ -812,6 +1029,9 @@ function PostCard({ post, myId, myInitials, images, liked, commentsOpen, comment
         </button>
         <button onClick={onToggleComments} className="flex items-center gap-1 text-[12px] font-medium text-text-muted px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-all">
           💬 <span>{post.comments_count}</span>
+        </button>
+        <button onClick={onOpenPost} className="flex items-center gap-1 text-[12px] font-medium text-text-muted px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-all">
+          👁 Read
         </button>
         <button onClick={onShare} className="flex items-center gap-1 text-[12px] font-medium text-text-muted px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-all">↗ Share</button>
         <div className="ml-auto flex gap-px">
@@ -826,9 +1046,7 @@ function PostCard({ post, myId, myInitials, images, liked, commentsOpen, comment
           <div className="flex flex-col gap-2 mb-2.5">
             {commentsList.map(c => (
               <div key={c.id} className="flex gap-2">
-                <div className="w-[26px] h-[26px] rounded-full bg-gray-100 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
-                  {c.profiles?.initials || c.profiles?.name?.charAt(0) || 'U'}
-                </div>
+                <div className="w-[26px] h-[26px] rounded-full bg-gray-100 flex items-center justify-center text-[9px] font-bold flex-shrink-0">{c.profiles?.initials || c.profiles?.name?.charAt(0) || 'U'}</div>
                 <div className="bg-gray-50 rounded-xl px-3 py-2 flex-1">
                   <div className="text-[11px] font-bold mb-0.5">{c.profiles?.name || 'User'}</div>
                   <div className="text-[12px] text-text-secondary leading-snug">{c.body}</div>
