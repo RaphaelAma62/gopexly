@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { validateUsername } from '@/lib/utils'
 
 type AuthMode = 'signin' | 'signup'
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+
+const APP_ORIGIN = (process.env.NEXT_PUBLIC_APP_URL || 'https://gopexly.onrender.com').replace(/\/$/, '')
+const HOME_PATH = '/home'
 
 interface SignUpData {
   firstName: string
@@ -18,12 +20,12 @@ interface SignUpData {
 }
 
 export default function LandingPage() {
-  const router = useRouter()
-  const sb = createClient()
+  const sb = useMemo(() => createClient(), [])
   const [mode, setMode] = useState<AuthMode>('signin')
   const [modalOpen, setModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [signupDone, setSignupDone] = useState(false)
 
   const [siEmail, setSiEmail] = useState('')
   const [siPassword, setSiPassword] = useState('')
@@ -36,44 +38,50 @@ export default function LandingPage() {
   const [unMsg, setUnMsg] = useState('')
   const unTimer = useRef<NodeJS.Timeout | null>(null)
 
+  // If already logged in, go to home
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/home')
+      if (session) {
+        window.location.replace(HOME_PATH)
+      }
     })
-  }, [sb, router])
+  }, [sb])
+
+  async function goToHomeAfterAuth() {
+    const { data: { session }, error: sessionErr } = await sb.auth.getSession()
+
+    if (sessionErr || !session) {
+      setError('Authentication succeeded, but your session is not ready yet. Please try signing in again.')
+      setLoading(false)
+      return
+    }
+
+    window.location.replace(HOME_PATH)
+
+    window.setTimeout(() => {
+      setError('Redirect is taking longer than expected. Please refresh the page or open /home.')
+      setLoading(false)
+    }, 5000)
+  }
 
   function openModal(m: AuthMode) {
     setMode(m); setModalOpen(true); setError('')
   }
 
-  // ── USERNAME CHECK — direct Supabase query, no API route ──
   async function checkUsername(val: string) {
     const clean = val.toLowerCase().replace(/[^a-z0-9_]/g, '')
     setSuData(prev => ({ ...prev, username: clean }))
     if (unTimer.current) clearTimeout(unTimer.current)
-
     const err = validateUsername(clean)
     if (!clean) { setUnStatus('idle'); setUnMsg(''); return }
     if (err) { setUnStatus('invalid'); setUnMsg(err); return }
-
     setUnStatus('checking')
     setUnMsg('Checking availability...')
-
     unTimer.current = setTimeout(async () => {
       try {
-        const { data } = await sb
-          .from('profiles')
-          .select('id')
-          .eq('username', clean)
-          .maybeSingle()
-
-        if (data) {
-          setUnStatus('taken')
-          setUnMsg(`@${clean} is already taken`)
-        } else {
-          setUnStatus('available')
-          setUnMsg(`@${clean} is available!`)
-        }
+        const { data } = await sb.from('profiles').select('id').eq('username', clean).maybeSingle()
+        setUnStatus(data ? 'taken' : 'available')
+        setUnMsg(data ? `@${clean} is already taken` : `@${clean} is available!`)
       } catch {
         setUnStatus('available')
         setUnMsg(`@${clean} is available!`)
@@ -81,68 +89,88 @@ export default function LandingPage() {
     }, 500)
   }
 
-  // ── SIGN IN ───────────────────────────────────────────────
+  // ── SIGN IN ──────────────────────────────────
   async function doSignIn(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (!siEmail || !siPassword) { setError('Please enter your email and password.'); return }
     setLoading(true)
-    const { data, error: authErr } = await sb.auth.signInWithPassword({
-      email: siEmail, password: siPassword
-    })
-    if (authErr) { setError('Incorrect email or password.'); setLoading(false); return }
-    const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single()
-    const fn = (profile as { first_name?: string; name?: string } | null)?.first_name
-      || (profile as { name?: string } | null)?.name?.split(' ')[0]
-      || siEmail.split('@')[0]
-    sessionStorage.setItem('gopexly_user', JSON.stringify({
-      id: data.user.id,
-      name: (profile as { name?: string } | null)?.name || fn,
-      firstName: fn,
-      initials: (profile as { initials?: string } | null)?.initials || fn.charAt(0).toUpperCase(),
-      username: (profile as { username?: string } | null)?.username || '',
-      email: siEmail,
-      role: (profile as { role?: string } | null)?.role || 'user'
-    }))
-    router.replace('/home')
+    try {
+      const { error: authErr } = await sb.auth.signInWithPassword({
+        email: siEmail, password: siPassword
+      })
+      if (authErr) {
+        setError('Incorrect email or password.')
+        setLoading(false)
+        return
+      }
+      await goToHomeAfterAuth()
+    } catch {
+      setError('Something went wrong. Please try again.')
+      setLoading(false)
+    }
   }
 
-  // ── SIGN UP ───────────────────────────────────────────────
+  // ── SIGN UP ──────────────────────────────────
   async function doSignUp(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     const { firstName, lastName, username, phone, email, password } = suData
     if (!firstName) { setError('Please enter your first name.'); return }
     if (!username || username.length < 3) { setError('Please choose a username (min. 3 characters).'); return }
-    if (unStatus !== 'available') { setError('That username is not available. Please choose another.'); return }
+    if (unStatus !== 'available') { setError('That username is not available.'); return }
     if (!phone) { setError('Please enter your phone number.'); return }
     if (!email) { setError('Please enter your email address.'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
     setLoading(true)
 
-    // Double-check username directly via Supabase
-    const { data: existing } = await sb.from('profiles').select('id').eq('username', username).maybeSingle()
-    if (existing) {
-      setError(`@${username} was just taken. Please choose another.`)
-      setLoading(false); return
+    try {
+      const { data: existing } = await sb.from('profiles').select('id').eq('username', username).maybeSingle()
+      if (existing) { setError(`@${username} was just taken.`); setLoading(false); return }
+
+      const { data, error: signUpErr } = await sb.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${APP_ORIGIN}/auth/callback?next=${encodeURIComponent(HOME_PATH)}`,
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            username,
+            phone,
+          },
+        },
+      })
+      if (signUpErr) { setError(signUpErr.message); setLoading(false); return }
+      if (!data.user) { setError('Something went wrong. Please try again.'); setLoading(false); return }
+
+      const fullName = `${firstName} ${lastName}`.trim()
+      const initials = firstName[0].toUpperCase() + (lastName ? lastName[0].toUpperCase() : '')
+
+      await sb.from('profiles').upsert({
+        id: data.user.id,
+        name: fullName,
+        first_name: firstName,
+        initials,
+        username,
+        phone,
+        joined_at: new Date().toISOString()
+      }, { onConflict: 'id' })
+
+      if (data.session) {
+        // Email confirmation is OFF — session exists immediately
+        await goToHomeAfterAuth()
+      } else {
+        // Email confirmation is ON — show message
+        setSignupDone(true)
+        setLoading(false)
+      }
+
+    } catch (err) {
+      console.error('Signup error:', err)
+      setError('Something went wrong. Please try again.')
+      setLoading(false)
     }
-
-    const { data, error: signUpErr } = await sb.auth.signUp({ email, password })
-    if (signUpErr) { setError(signUpErr.message); setLoading(false); return }
-    if (!data.user) { setError('Something went wrong. Please try again.'); setLoading(false); return }
-
-    const fullName = `${firstName} ${lastName}`.trim()
-    const initials = firstName[0].toUpperCase() + (lastName ? lastName[0].toUpperCase() : '')
-
-    await sb.from('profiles').upsert({
-      id: data.user.id, name: fullName, first_name: firstName,
-      initials, username, phone, joined_at: new Date().toISOString()
-    }, { onConflict: 'id' })
-
-    sessionStorage.setItem('gopexly_user', JSON.stringify({
-      id: data.user.id, name: fullName, firstName, initials, username, email, role: 'user'
-    }))
-    router.replace('/home')
   }
 
   return (
@@ -183,7 +211,7 @@ export default function LandingPage() {
             Track NGX stocks, share investment insights, and grow your wealth alongside a community of investors.
           </p>
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            <button onClick={() => openModal('signup')} className="bg-primary text-white text-[15px] font-bold px-8 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+            <button onClick={() => openModal('signup')} className="bg-primary text-white text-[15px] font-bold px-8 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg hover:-translate-y-0.5">
               Start Investing Free →
             </button>
             <button onClick={() => openModal('signin')} className="text-[15px] font-semibold text-gray-700 px-8 py-4 rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all">
@@ -250,118 +278,128 @@ export default function LandingPage() {
         <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center backdrop-blur-sm p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false) }}>
           <div className="bg-white rounded-3xl w-full max-w-[420px] shadow-2xl overflow-hidden">
-            {/* Tabs */}
             <div className="flex border-b border-gray-200">
-              <button onClick={() => { setMode('signin'); setError('') }}
-                className={`flex-1 py-4 text-[13px] font-bold transition-all ${mode === 'signin' ? 'text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700'}`}>
+              <button onClick={() => { setMode('signin'); setError(''); setSignupDone(false) }}
+                className={`flex-1 py-4 text-[13px] font-bold transition-all ${mode === 'signin' ? 'text-primary border-b-2 border-primary' : 'text-gray-500'}`}>
                 Sign In
               </button>
-              <button onClick={() => { setMode('signup'); setError('') }}
-                className={`flex-1 py-4 text-[13px] font-bold transition-all ${mode === 'signup' ? 'text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700'}`}>
+              <button onClick={() => { setMode('signup'); setError(''); setSignupDone(false) }}
+                className={`flex-1 py-4 text-[13px] font-bold transition-all ${mode === 'signup' ? 'text-primary border-b-2 border-primary' : 'text-gray-500'}`}>
                 Create Account
               </button>
             </div>
 
             <div className="p-6">
-              {error && (
-                <div className="bg-loss-bg border border-loss-border text-loss text-[13px] font-medium px-4 py-3 rounded-xl mb-4">{error}</div>
-              )}
-
-              {/* SIGN IN */}
-              {mode === 'signin' && (
-                <form onSubmit={doSignIn} className="flex flex-col gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Email</label>
-                    <input type="email" value={siEmail} onChange={e => setSiEmail(e.target.value)}
-                      placeholder="you@example.com" required
-                      className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
+              {signupDone ? (
+                <div className="text-center py-4">
+                  <div className="text-4xl mb-3">📧</div>
+                  <div className="font-display text-[16px] font-extrabold mb-2">Check your email!</div>
+                  <div className="text-[13px] text-gray-500 mb-4">
+                    We sent a confirmation link to <strong>{suData.email}</strong>. Click it to activate your account.
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Password</label>
-                    <input type="password" value={siPassword} onChange={e => setSiPassword(e.target.value)}
-                      placeholder="Your password" required
-                      className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
+                  <div className="text-[11px] text-amber bg-amber-bg p-3 rounded-xl">
+                    To skip email confirmation: Supabase → Authentication → Providers → Email → turn off &quot;Confirm email&quot;
                   </div>
-                  <button type="submit" disabled={loading}
-                    className="w-full bg-primary text-white font-bold py-3 rounded-xl text-[14px] hover:bg-primary-dark transition-all disabled:opacity-50 mt-1">
-                    {loading ? 'Signing in...' : 'Sign in to Gopexly →'}
-                  </button>
-                  <p className="text-center text-[12px] text-gray-400">
-                    Don&apos;t have an account?{' '}
-                    <button type="button" onClick={() => setMode('signup')} className="text-primary font-semibold">Create one</button>
-                  </p>
-                </form>
-              )}
+                </div>
+              ) : (
+                <>
+                  {error && (
+                    <div className="bg-loss-bg border border-loss-border text-loss text-[13px] font-medium px-4 py-3 rounded-xl mb-4">{error}</div>
+                  )}
 
-              {/* SIGN UP */}
-              {mode === 'signup' && (
-                <form onSubmit={doSignUp} className="flex flex-col gap-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">First Name</label>
-                      <input value={suData.firstName} onChange={e => setSuData(p => ({ ...p, firstName: e.target.value }))}
-                        placeholder="Adaeze" required
-                        className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Last Name</label>
-                      <input value={suData.lastName} onChange={e => setSuData(p => ({ ...p, lastName: e.target.value }))}
-                        placeholder="Obi"
-                        className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                      Username <span className="text-primary normal-case font-medium">must be unique</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[13px] font-semibold">@</span>
-                      <input value={suData.username} onChange={e => checkUsername(e.target.value)}
-                        placeholder="adaeze_invests" autoComplete="off"
-                        className={`w-full bg-gray-50 border-[1.5px] text-gray-900 pl-7 pr-8 py-2.5 rounded-xl text-[13px] outline-none transition-all focus:bg-white ${
-                          unStatus === 'available' ? 'border-gain' :
-                          unStatus === 'taken' || unStatus === 'invalid' ? 'border-loss' : 'border-gray-200 focus:border-primary'}`} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[15px]">
-                        {unStatus === 'checking' ? '⏳' : unStatus === 'available' ? '✓' : unStatus === 'taken' || unStatus === 'invalid' ? '✗' : ''}
-                      </span>
-                    </div>
-                    {unMsg && (
-                      <p className={`text-[11px] mt-1 ${unStatus === 'available' ? 'text-gain' : unStatus === 'taken' || unStatus === 'invalid' ? 'text-loss' : 'text-gray-400'}`}>
-                        {unMsg}
+                  {mode === 'signin' && (
+                    <form onSubmit={doSignIn} className="flex flex-col gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Email</label>
+                        <input type="email" value={siEmail} onChange={e => setSiEmail(e.target.value)}
+                          placeholder="you@example.com" required
+                          className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Password</label>
+                        <input type="password" value={siPassword} onChange={e => setSiPassword(e.target.value)}
+                          placeholder="Your password" required
+                          className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
+                      </div>
+                      <button type="submit" disabled={loading}
+                        className="w-full bg-primary text-white font-bold py-3 rounded-xl text-[14px] hover:bg-primary-dark transition-all disabled:opacity-50">
+                        {loading ? 'Signing in...' : 'Sign in to Gopexly →'}
+                      </button>
+                      <p className="text-center text-[12px] text-gray-400">
+                        Don&apos;t have an account?{' '}
+                        <button type="button" onClick={() => setMode('signup')} className="text-primary font-semibold">Create one</button>
                       </p>
-                    )}
-                  </div>
+                    </form>
+                  )}
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Phone Number</label>
-                    <input type="tel" value={suData.phone} onChange={e => setSuData(p => ({ ...p, phone: e.target.value }))}
-                      placeholder="+234 800 000 0000" required
-                      className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
-                  </div>
+                  {mode === 'signup' && (
+                    <form onSubmit={doSignUp} className="flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">First Name</label>
+                          <input value={suData.firstName} onChange={e => setSuData(p => ({ ...p, firstName: e.target.value }))}
+                            placeholder="Adaeze" required
+                            className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary transition-all" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Last Name</label>
+                          <input value={suData.lastName} onChange={e => setSuData(p => ({ ...p, lastName: e.target.value }))}
+                            placeholder="Obi"
+                            className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary transition-all" />
+                        </div>
+                      </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Email</label>
-                    <input type="email" value={suData.email} onChange={e => setSuData(p => ({ ...p, email: e.target.value }))}
-                      placeholder="you@example.com" required
-                      className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
-                  </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                          Username <span className="text-primary normal-case font-medium">must be unique</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[13px] font-semibold">@</span>
+                          <input value={suData.username} onChange={e => checkUsername(e.target.value)}
+                            placeholder="adaeze_invests" autoComplete="off"
+                            className={`w-full bg-gray-50 border-[1.5px] text-gray-900 pl-7 pr-8 py-2.5 rounded-xl text-[13px] outline-none transition-all focus:bg-white ${
+                              unStatus === 'available' ? 'border-gain' :
+                              unStatus === 'taken' || unStatus === 'invalid' ? 'border-loss' : 'border-gray-200 focus:border-primary'}`} />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[15px]">
+                            {unStatus === 'checking' ? '⏳' : unStatus === 'available' ? '✓' : unStatus === 'taken' || unStatus === 'invalid' ? '✗' : ''}
+                          </span>
+                        </div>
+                        {unMsg && (
+                          <p className={`text-[11px] mt-1 ${unStatus === 'available' ? 'text-gain' : 'text-loss'}`}>{unMsg}</p>
+                        )}
+                      </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Password</label>
-                    <input type="password" value={suData.password} onChange={e => setSuData(p => ({ ...p, password: e.target.value }))}
-                      placeholder="Min. 8 characters" required minLength={8}
-                      className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary focus:bg-white transition-all" />
-                  </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Phone Number</label>
+                        <input type="tel" value={suData.phone} onChange={e => setSuData(p => ({ ...p, phone: e.target.value }))}
+                          placeholder="+234 800 000 0000" required
+                          className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary transition-all" />
+                      </div>
 
-                  <button type="submit" disabled={loading}
-                    className="w-full bg-primary text-white font-bold py-3 rounded-xl text-[14px] hover:bg-primary-dark transition-all disabled:opacity-50 mt-1">
-                    {loading ? 'Creating account...' : 'Create my account →'}
-                  </button>
-                  <p className="text-center text-[11px] text-gray-400">
-                    By signing up you agree to our <a href="#" className="text-primary">Terms</a> &amp; <a href="#" className="text-primary">Privacy Policy</a>
-                  </p>
-                </form>
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Email</label>
+                        <input type="email" value={suData.email} onChange={e => setSuData(p => ({ ...p, email: e.target.value }))}
+                          placeholder="you@example.com" required
+                          className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary transition-all" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Password</label>
+                        <input type="password" value={suData.password} onChange={e => setSuData(p => ({ ...p, password: e.target.value }))}
+                          placeholder="Min. 8 characters" required minLength={8}
+                          className="w-full bg-gray-50 border-[1.5px] border-gray-200 text-gray-900 px-3 py-2.5 rounded-xl text-[13px] outline-none focus:border-primary transition-all" />
+                      </div>
+
+                      <button type="submit" disabled={loading}
+                        className="w-full bg-primary text-white font-bold py-3 rounded-xl text-[14px] hover:bg-primary-dark transition-all disabled:opacity-50 mt-1">
+                        {loading ? 'Creating account...' : 'Create my account →'}
+                      </button>
+                      <p className="text-center text-[11px] text-gray-400">
+                        By signing up you agree to our <a href="#" className="text-primary">Terms</a> &amp; <a href="#" className="text-primary">Privacy Policy</a>
+                      </p>
+                    </form>
+                  )}
+                </>
               )}
             </div>
           </div>
