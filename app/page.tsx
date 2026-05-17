@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { validateUsername } from '@/lib/utils'
 
@@ -31,13 +31,6 @@ export default function LandingPage() {
   const [unStatus, setUnStatus] = useState<UsernameStatus>('idle')
   const [unMsg, setUnMsg] = useState('')
   const unTimer = useRef<NodeJS.Timeout | null>(null)
-
-  // Redirect if already logged in
-  useEffect(() => {
-    sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) window.location.href = '/home'
-    })
-  }, [sb])
 
   function openModal(m: AuthMode) {
     setMode(m); setModalOpen(true); setError('')
