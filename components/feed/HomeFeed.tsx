@@ -14,6 +14,11 @@ type FeedTab = 'fy' | 'fl' | 'nw'
 
 interface PendingTicker { ticker: string; name: string }
 interface PendingImage { file: File; dataUrl: string }
+type SupabaseRelation<T> = T | T[] | null | undefined
+
+function oneRelation<T>(relation: SupabaseRelation<T>): T | undefined {
+  return Array.isArray(relation) ? relation[0] : relation ?? undefined
+}
 
 export default function HomeFeed() {
   const sb = createClient()
@@ -168,7 +173,8 @@ export default function HomeFeed() {
 
       const { data, error } = await query
       if (error) throw error
-      const postsData = (data || []) as Post[]
+      const postsData = ((data || []) as (Omit<Post, 'profiles'> & { profiles: SupabaseRelation<Post['profiles']> })[])
+        .map(p => ({ ...p, profiles: oneRelation(p.profiles) }))
       setPosts(postsData)
 
       // Load images

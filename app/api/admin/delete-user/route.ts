@@ -15,7 +15,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Use explicit type assertion to fix 'never' inference issue
+  // Cast to avoid TypeScript never inference
   const { data: profileData } = await supabase
     .from('profiles')
     .select('role')
@@ -28,7 +28,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   }
 
-  // Cast to any to bypass missing RPC type definition
+  // Use any to bypass strict RPC typing
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.rpc as any)('delete_user_completely', {
     target_user_id: targetUserId,
@@ -36,20 +36,6 @@ export async function DELETE(request: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // Also delete from auth.users using service role
-  if (data?.success) {
-    try {
-      const { createClient } = await import('@supabase/supabase-js')
-      const serviceClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
-      await serviceClient.auth.admin.deleteUser(targetUserId)
-    } catch (e) {
-      console.error('Service role delete failed:', e)
-    }
   }
 
   return NextResponse.json(data)

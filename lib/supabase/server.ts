@@ -1,11 +1,18 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import type { Database } from './client'
+import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies'
+
+type CookieToSet = {
+  name: string
+  value: string
+  options?: Partial<ResponseCookie>
+}
 
 export async function createServerSupabaseClient() {
   const cookieStore = await cookies()
 
-  return createServerClient<Database>(
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -13,13 +20,13 @@ export async function createServerSupabaseClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieToSet[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options)
             })
           } catch {
-            // Server Component — cookies can't be set here, handled by middleware
+            // Server Component — handled by middleware
           }
         },
       },
@@ -27,10 +34,8 @@ export async function createServerSupabaseClient() {
   )
 }
 
-// Service role client for admin operations (API routes only)
 export function createServiceClient() {
-  const { createClient } = require('@supabase/supabase-js')
-  return createClient<Database>(
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )

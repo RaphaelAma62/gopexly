@@ -10,6 +10,20 @@ import type { Profile, Post, StockPrice } from '@/types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
+// Explicit row types to avoid Supabase 'never' inference
+type ProfileRow = { id: string; name: string | null; username: string | null; country: string | null; role: string; is_suspended: boolean; is_verified: boolean; total_posts: number; joined_at: string | null; initials: string | null; phone: string | null; followers_count: number; points: number; streak: number }
+type PostRow = { id: string; body: string; created_at: string; likes_count: number; comments_count: number; user_id: string; profiles: { name: string | null } | null }
+type NewsRow = { id: string; title: string; body: string; created_at: string; source: string | null; profiles: { name: string | null } | null }
+type CourseRow = { id: string; title: string; category: string; difficulty: string; points_reward: number; lesson_count: number; is_published: boolean }
+type HoldingRow = { id: string; ticker: string; company_name: string | null; shares: number; buy_price: number; profiles: { name: string | null } | null }
+type LogRow = { id: string; body: string; created_at: string; profiles: { name: string | null } | null }
+type SupabaseRelation<T> = T | T[] | null
+
+function oneRelation<T>(relation: SupabaseRelation<T>): T | null {
+  return Array.isArray(relation) ? relation[0] ?? null : relation
+}
+
+
 type AdminSection = 'dashboard' | 'users' | 'suspended' | 'admins' | 'posts' | 'news' | 'courses' | 'portfolios' | 'market' | 'settings' | 'logs'
 
 const NAV_ITEMS = [
@@ -42,14 +56,14 @@ export default function AdminPanel() {
   const [healthData, setHealthData] = useState({ active: 0, suspended: 0, verified: 0 })
 
   // Users
-  const [users, setUsers] = useState<Profile[]>([])
-  const [filteredUsers, setFilteredUsers] = useState<Profile[]>([])
+  const [users, setUsers] = useState<ProfileRow[]>([])
+  const [filteredUsers, setFilteredUsers] = useState<ProfileRow[]>([])
   const [userPage, setUserPage] = useState(1)
   const [userLoading, setUserLoading] = useState(false)
   const PER = 15
 
   // Selected user for modal
-  const [viewUser, setViewUser] = useState<Profile | null>(null)
+  const [viewUser, setViewUser] = useState<ProfileRow | null>(null)
   const [viewUserStats, setViewUserStats] = useState({ posts: 0, holdings: 0, followers: 0 })
 
   // Suspend modal
@@ -60,7 +74,7 @@ export default function AdminPanel() {
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Posts
-  const [posts, setPosts] = useState<Post[]>([])
+  const [posts, setPosts] = useState<PostRow[]>([])
 
   // News
   const [newsTitle, setNewsTitle] = useState('')
@@ -97,8 +111,9 @@ export default function AdminPanel() {
   // ── AUTH CHECK ────────────────────────────────
   useEffect(() => {
     if (!user) return
-    sb.from('profiles').select('role').eq('id', user.id).single().then(({ data }) => {
-      if (!data || !['admin', 'editor'].includes(data.role)) {
+    sb.from('profiles').select('role').eq('id', user.id).single().then(({ data: rd }) => {
+      const roleData = rd as { role: string } | null
+      if (!roleData || !['admin', 'editor'].includes(roleData.role)) {
         setAccessDenied(true)
       } else {
         setLoading(false)
@@ -121,7 +136,7 @@ export default function AdminPanel() {
     setStats({ users: uRes.count || 0, posts: pRes.count || 0, holdings: hRes.count || 0 })
     setHealthData({ active: Math.max(0, (uRes.count || 0) - (sRes.count || 0)), suspended: sRes.count || 0, verified: vRes.count || 0 })
     const countries: Record<string, number> = {}
-    ;(cRes.data || []).forEach(p => { const c = p.country || 'Nigeria'; countries[c] = (countries[c] || 0) + 1 })
+    ;(cRes.data as { country: string | null }[] || []).forEach(p => { const c = p.country || 'Nigeria'; countries[c] = (countries[c] || 0) + 1 })
     setCountryData(countries)
   }, [sb])
 
@@ -139,8 +154,8 @@ export default function AdminPanel() {
 
   async function loadUsers() {
     setUserLoading(true)
-    const { data } = await sb.from('profiles').select('*').order('joined_at', { ascending: false })
-    const all = (data || []) as Profile[]
+    const { data: ud } = await sb.from('profiles').select('*').order('joined_at', { ascending: false })
+    const all = (ud || []) as Profile[]
     setUsers(all)
     if (section === 'suspended') setFilteredUsers(all.filter(u => u.is_suspended))
     else if (section === 'admins') setFilteredUsers(all.filter(u => u.role === 'admin' || u.role === 'editor'))
@@ -150,39 +165,42 @@ export default function AdminPanel() {
   }
 
   async function loadPosts() {
-    const { data } = await sb.from('posts')
+    const { data: pd } = await sb.from('posts')
       .select('id,user_id,body,created_at,likes_count,comments_count,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(60)
-    setPosts((data || []) as Post[])
+    setPosts(((pd || []) as (Omit<PostRow, 'profiles'> & { profiles: SupabaseRelation<{ name: string | null }> })[])
+      .map(p => ({ ...p, profiles: oneRelation(p.profiles) })))
   }
 
   async function loadNews() {
-    const { data } = await sb.from('news_posts')
+    const { data: nd } = await sb.from('news_posts')
       .select('*, profiles!news_posts_author_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(20)
-    setNewsList(data || [])
+    setNewsList((nd || []) as typeof newsList)
   }
 
   async function loadCourses() {
-    const { data } = await sb.from('courses').select('*').order('created_at', { ascending: false })
-    setCoursesList(data || [])
+    const { data: cd } = await sb.from('courses').select('*').order('created_at', { ascending: false })
+    setCoursesList((cd || []) as typeof coursesList)
   }
 
   async function loadMarket() {
-    const { data } = await sb.from('stock_prices').select('*').order('ticker')
-    setMarket((data || []) as StockPrice[])
+    const { data: md } = await sb.from('stock_prices').select('*').order('ticker')
+    setMarket((md || []) as StockPrice[])
   }
 
-  const [logs, setLogs] = useState<{ id: string; body: string; created_at: string; profiles?: { name?: string | null } | null }[]>([])
+  const [holdings, setHoldings] = useState<HoldingRow[]>([])
+  const [logs, setLogs] = useState<LogRow[]>([])
   async function loadLogs() {
-    const { data } = await sb.from('posts')
+    const { data: ld } = await sb.from('posts')
       .select('id,body,created_at,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(30)
-    setLogs(data || [])
+    setLogs(((ld || []) as (Omit<LogRow, 'profiles'> & { profiles: SupabaseRelation<{ name: string | null }> })[])
+      .map(l => ({ ...l, profiles: oneRelation(l.profiles) })))
   }
 
   // ── USER ACTIONS ──────────────────────────────
-  async function openViewUser(u: Profile) {
+  async function openViewUser(u: ProfileRow) {
     setViewUser(u)
     const [pRes, hRes, fRes] = await Promise.all([
       sb.from('posts').select('id', { count: 'exact', head: true }).eq('user_id', u.id),
@@ -194,21 +212,21 @@ export default function AdminPanel() {
 
   async function doSuspend() {
     if (!suspendTarget) return
-    await sb.from('profiles').update({ is_suspended: true, suspension_reason: suspendReason || 'No reason' }).eq('id', suspendTarget)
+    await (sb.from('profiles') as any).update({ is_suspended: true, suspension_reason: suspendReason || 'No reason' }).eq('id', suspendTarget)
     setSuspendTarget(null); setSuspendReason('')
     showToast('User suspended', 'ok')
     loadUsers()
   }
 
   async function doUnsuspend(uid: string) {
-    await sb.from('profiles').update({ is_suspended: false, suspension_reason: null }).eq('id', uid)
+    await (sb.from('profiles') as any).update({ is_suspended: false, suspension_reason: null }).eq('id', uid)
     showToast('User unsuspended', 'ok')
     loadUsers()
   }
 
   async function doMakeAdmin(uid: string) {
     if (!confirm('Give this user admin privileges?')) return
-    await sb.from('profiles').update({ role: 'admin' }).eq('id', uid)
+    await (sb.from('profiles') as any).update({ role: 'admin' }).eq('id', uid)
     showToast('User promoted to admin', 'ok')
     setViewUser(null); loadUsers()
   }
@@ -232,7 +250,7 @@ export default function AdminPanel() {
 
   async function doDeletePost(id: string, el: HTMLElement) {
     if (!confirm('Delete this post?')) return
-    await sb.from('posts').delete().eq('id', id)
+    await (sb.from('posts') as any).delete().eq('id', id)
     el.closest('tr')?.remove()
     showToast('Post deleted', 'ok')
   }
@@ -248,12 +266,12 @@ export default function AdminPanel() {
       const up = await sb.storage.from('post-images').upload(path, newsImg, { contentType: newsImg.type })
       if (!up.error) imageUrl = sb.storage.from('post-images').getPublicUrl(path).data.publicUrl
     }
-    const { data: n, error } = await sb.from('news_posts').insert({
+    const { data: n, error } = await (sb.from('news_posts') as any).insert({
       title: newsTitle, body: newsBody, source: newsSource || null, image_url: imageUrl, author_id: user.id
     }).select().single()
     if (error) { showToast('Error: ' + error.message, 'err'); setNewsPostLoading(false); return }
     const excerpt = newsBody.length > 200 ? newsBody.slice(0, 200) + '...' : newsBody
-    await sb.from('posts').insert({ user_id: user.id, body: `📰 [NEWS] ${newsTitle}\n\n${excerpt}${newsSource ? '\n\nSource: ' + newsSource : ''}`, ticker_holdings: [] })
+    await (sb.from('posts') as any).insert({ user_id: user.id, body: '📰 [NEWS] ' + newsTitle + '\n\n' + excerpt + (newsSource ? '\n\nSource: ' + newsSource : ''), ticker_holdings: [] })
     setNewsTitle(''); setNewsBody(''); setNewsSource(''); setNewsImg(null); setNewsImgPreview('')
     setNewsPostLoading(false)
     showToast('News published to all users!', 'ok')
@@ -264,7 +282,7 @@ export default function AdminPanel() {
   // ── COURSES ───────────────────────────────────
   async function createCourse() {
     if (!coTitle || !user) { showToast('Title required', 'err'); return }
-    const { error } = await sb.from('courses').insert({
+    const { error } = await (sb.from('courses') as any).insert({
       title: coTitle, description: coDesc, category: coCat, difficulty: coDiff,
       duration_mins: parseInt(coDur) || 30, points_reward: parseInt(coPts) || 100,
       created_by: user.id, is_published: false
@@ -277,20 +295,20 @@ export default function AdminPanel() {
 
   async function addLesson() {
     if (!activeCourseId || !lsTitle || !lsContent) { showToast('Title and content required', 'err'); return }
-    const cnt = await sb.from('course_lessons').select('id', { count: 'exact', head: true }).eq('course_id', activeCourseId)
+    const cnt = await (sb.from('course_lessons') as any).select('id', { count: 'exact', head: true }).eq('course_id', activeCourseId)
     const order = (cnt.count || 0) + 1
-    const { data: lr, error } = await sb.from('course_lessons').insert({
+    const { data: lr, error } = await (sb.from('course_lessons') as any).insert({
       course_id: activeCourseId, title: lsTitle, content: lsContent,
       video_url: lsVideo || null, lesson_type: lsType, lesson_order: order, duration_mins: parseInt(lsDur) || 10
     }).select().single()
     if (error || !lr) { showToast('Error: ' + (error?.message || 'Failed'), 'err'); return }
     if (asQ) {
-      await sb.from('course_assessments').insert({
+      await (sb.from('course_assessments') as any).insert({
         course_id: activeCourseId, lesson_id: lr.id, question: asQ,
         options: JSON.stringify(asOpts), correct_index: asCorrect, explanation: asExp || null
       })
     }
-    await sb.from('courses').update({ lesson_count: order }).eq('id', activeCourseId)
+    await (sb.from('courses') as any).update({ lesson_count: order }).eq('id', activeCourseId)
     setLsTitle(''); setLsContent(''); setLsVideo('')
     setAsQ(''); setAsOpts(['', '', '', '']); setAsCorrect(0); setAsExp('')
     showToast(`Lesson ${order} added!`, 'ok')
@@ -298,14 +316,14 @@ export default function AdminPanel() {
   }
 
   async function togglePublish(id: string, current: boolean) {
-    await sb.from('courses').update({ is_published: !current }).eq('id', id)
+    await (sb.from('courses') as any).update({ is_published: !current }).eq('id', id)
     showToast(!current ? 'Course published!' : 'Course unpublished', 'ok')
     loadCourses()
   }
 
   async function deleteCourse(id: string) {
     if (!confirm('Delete this course and all lessons?')) return
-    await sb.from('courses').delete().eq('id', id)
+    await (sb.from('courses') as any).delete().eq('id', id)
     showToast('Course deleted', 'ok')
     loadCourses()
   }
@@ -618,7 +636,7 @@ export default function AdminPanel() {
                       <div className="text-[11px] text-text-muted mb-2">{fmtTime(n.created_at)} · {n.profiles?.name || 'Admin'}</div>
                       <button onClick={async () => {
                         if (!confirm('Delete this news article?')) return
-                        await sb.from('news_posts').delete().eq('id', n.id)
+                        await (sb.from('news_posts') as any).delete().eq('id', n.id)
                         setNewsList(prev => prev.filter(x => x.id !== n.id))
                         showToast('Deleted', 'ok')
                       }} className="text-[11px] font-semibold text-loss bg-loss-bg px-2.5 py-1 rounded-lg hover:bg-loss hover:text-white transition-all">🗑 Delete</button>
@@ -738,7 +756,7 @@ export default function AdminPanel() {
                 <div className="text-[13px] text-text-muted">{market.length} stocks</div>
                 <button onClick={async () => {
                   showToast('Triggering refresh...', '')
-                  try { await sb.rpc('fetch_all_ngx_prices'); showToast('Refreshed!', 'ok') } catch { showToast('pg_cron will refresh shortly', '') }
+                  try { await (sb.rpc as any)('fetch_all_ngx_prices'); showToast('Refreshed!', 'ok') } catch { showToast('pg_cron will refresh shortly', '') }
                   loadMarket()
                 }} className="bg-primary text-white text-[12px] font-bold px-4 py-2 rounded-lg hover:bg-primary-dark">↻ Refresh Now</button>
               </div>
