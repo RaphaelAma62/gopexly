@@ -208,12 +208,18 @@ export interface ToastState {
 
 export type FeedTab = 'fy' | 'fl' | 'nw'
 
+export interface StockPriceData {
+  price: number
+  change_pct: number
+  change_amt?: number
+  company_name: string
+  volume?: number
+  market_cap?: number
+  last_updated?: string
+}
+
 export interface PriceMap {
-  [ticker: string]: {
-    price: number
-    change_pct: number
-    company_name: string
-  }
+  [ticker: string]: StockPriceData
 }
 
 // ── API RESPONSES ─────────────────────────────
