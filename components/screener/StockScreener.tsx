@@ -118,8 +118,8 @@ export default function StockScreener() {
         return true
       })
       .sort((a, b) => {
-        const av = (a as Record<string, unknown>)[sortKey] ?? 0
-        const bv = (b as Record<string, unknown>)[sortKey] ?? 0
+        const av = (a as unknown as Record<string, unknown>)[sortKey] ?? 0
+        const bv = (b as unknown as Record<string, unknown>)[sortKey] ?? 0
         if (typeof av === 'string') return sortAsc ? (av as string).localeCompare(bv as string) : (bv as string).localeCompare(av as string)
         return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number)
       })
