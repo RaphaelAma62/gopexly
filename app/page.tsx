@@ -192,7 +192,7 @@ export default function LandingPage() {
         </div>
         <div className="relative max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 bg-primary-light text-primary text-[12px] font-bold px-4 py-1.5 rounded-full mb-6 border border-primary-border">
-            🇳🇬 Built for African Investors
+            🇳🇬 Built for Nigerian Investors
           </div>
           <h1 className="font-display text-[48px] md:text-[64px] font-black text-gray-900 leading-tight tracking-tight mb-6">
             Africa&apos;s Social<br />
@@ -249,7 +249,7 @@ export default function LandingPage() {
           <h2 className="font-display text-[32px] font-extrabold text-gray-900 mb-4">
             Ready to start investing smarter?
           </h2>
-          <p className="text-gray-500 mb-8 text-[15px]">Join thousands of African investors already on Gopexly.</p>
+          <p className="text-gray-500 mb-8 text-[15px]">Join thousands of Nigerian investors already on Gopexly.</p>
           <button onClick={() => openModal('signup')}
             className="bg-primary text-white text-[15px] font-bold px-10 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg">
             Create Free Account →

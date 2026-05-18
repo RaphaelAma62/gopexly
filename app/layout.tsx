@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: 'Track NGX stocks, share investment insights, and grow your wealth with Gopexly.',
   keywords: ['investing', 'NGX', 'Nigeria', 'stocks', 'portfolio', 'fintech'],
   openGraph: {
-    title: 'Gopexly — Africa\'s Social Investing Platform',
+    title: 'Gopexly — Nigeria\'s Social Investing Platform',
     description: 'Track NGX stocks, share investment insights, and grow your wealth.',
     type: 'website',
   },
