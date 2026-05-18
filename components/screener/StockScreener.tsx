@@ -159,8 +159,8 @@ export default function StockScreener() {
                       {up ? '+' : ''}{(s.change_pct ?? 0).toFixed(2)}%
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[13px] text-text-muted">{s.volume ? (s.volume / 1000).toFixed(0) + 'K' : '—'}</td>
-                  <td className="px-4 py-3 text-[13px] text-text-muted">{s.market_cap ? `₦${(s.market_cap / 1_000_000_000).toFixed(1)}B` : '—'}</td>
+                  <td className="px-4 py-3 text-[13px] text-text-muted">{(s as unknown as {volume?: number}).volume ? ((s as unknown as {volume: number}).volume / 1000).toFixed(0) + 'K' : '—'}</td>
+                  <td className="px-4 py-3 text-[13px] text-text-muted">{(s as unknown as {market_cap?: number}).market_cap ? `₦${((s as unknown as {market_cap: number}).market_cap / 1_000_000_000).toFixed(1)}B` : '—'}</td>
                   <td className="px-4 py-3">
                     <span className={cn('text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase', signalStyle[s.signal])}>
                       {s.signal.replace('_', ' ')}
