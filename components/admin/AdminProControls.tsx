@@ -36,20 +36,37 @@ interface ToggleSetting {
 }
 
 const FEATURE_TOGGLES: ToggleSetting[] = [
-  { key: 'pro_enabled',              label: 'Pro Subscriptions Live',    description: 'Enable Paystack payments and Pro upgrades',                    icon: '💳' },
-  { key: 'pro_feature_watchlist',    label: 'Unlimited Watchlist',       description: 'Pro users get unlimited watchlist stocks',                     icon: '👁' },
-  { key: 'pro_feature_alerts',       label: 'Unlimited Price Alerts',    description: 'Pro users get unlimited price alerts',                         icon: '🔔' },
-  { key: 'pro_feature_screener',     label: 'Stock Screener',            description: 'Advanced NGX stock filtering for Pro users',                   icon: '📊' },
-  { key: 'pro_feature_charts',       label: 'Portfolio Charts',          description: 'Performance line charts for Pro users',                        icon: '📈' },
-  { key: 'pro_feature_ai_unlimited', label: 'Unlimited AI',              description: 'Remove daily AI limit for Pro users',                          icon: '🤖' },
-  { key: 'pro_feature_reports',      label: 'PDF Reports',               description: 'Monthly portfolio reports for Pro users',                      icon: '📄' },
-  { key: 'pro_feature_clubs',        label: 'Investment Clubs',          description: 'Pro users can create investment clubs',                        icon: '🏠' },
-  { key: 'pro_feature_messaging',    label: 'Direct Messaging',          description: 'Private messages between users for Pro',                       icon: '💬' },
-  { key: 'pro_feature_leaderboard',  label: 'Leaderboard Ranking',       description: 'Full leaderboard access for Pro users',                        icon: '🏆' },
-  { key: 'verification_enabled',     label: 'Verification Requests',     description: 'Allow users to request verified badge',                        icon: '✅' },
-  { key: 'paystack_live_mode',       label: 'Paystack LIVE Mode',        description: 'Switch from test to live Paystack keys (real payments!)',      icon: '💰', danger: true },
-  { key: 'maintenance_mode',         label: 'Maintenance Mode',          description: 'Show maintenance page to all non-admin users',                  icon: '🔧', danger: true },
+  // ── MASTER ──
+  { key: 'pro_enabled',              label: 'Pro Subscriptions Live',    description: 'Enable Paystack payments and Pro upgrades for all users',       icon: '💳' },
+
+  // ── FREE FEATURES ──
+  { key: 'notifications_enabled',    label: 'Notifications',             description: 'Like, comment, follow notifications for all users',              icon: '🔔' },
+  { key: 'referrals_enabled',        label: 'Referral Programme',        description: 'Users can generate referral codes and earn Pro rewards',         icon: '🎁' },
+  { key: 'onboarding_enabled',       label: 'Onboarding Flow',           description: 'Show 4-step onboarding to new users on first login',             icon: '👋' },
+  { key: 'stock_detail_enabled',     label: 'Stock Detail Pages',        description: 'Clickable stock pages with holders, posts, price data',          icon: '📊' },
+  { key: 'clubs_enabled',            label: 'Investment Clubs',          description: 'Free users can join clubs (Pro required to create)',              icon: '🏠' },
+  { key: 'verification_enabled',     label: 'Verification Requests',     description: 'Allow users to request verified investor badge',                 icon: '✅' },
+
+  // ── PRO FEATURES ──
+  { key: 'pro_feature_watchlist',    label: 'Pro: Unlimited Watchlist',  description: 'Pro users bypass 5-stock watchlist limit',                      icon: '👁' },
+  { key: 'pro_feature_alerts',       label: 'Pro: Unlimited Alerts',     description: 'Pro users bypass 1 active alert limit',                         icon: '🔔' },
+  { key: 'pro_feature_screener',     label: 'Pro: Stock Screener',       description: 'Advanced NGX stock filtering page for Pro users',                icon: '📈' },
+  { key: 'pro_feature_charts',       label: 'Pro: Portfolio Charts',     description: 'Performance line charts for Pro users',                          icon: '📉' },
+  { key: 'pro_feature_ai_unlimited', label: 'Pro: Unlimited AI',         description: 'Remove Gopex AI daily limit for Pro users',                      icon: '🤖' },
+  { key: 'pro_feature_reports',      label: 'Pro: PDF Reports',          description: 'Monthly auto-generated portfolio PDF for Pro users',             icon: '📄' },
+  { key: 'pro_feature_clubs',        label: 'Pro: Create Clubs',         description: 'Pro users can create investment clubs (free users join only)',    icon: '🏆' },
+  { key: 'pro_feature_messaging',    label: 'Pro: Direct Messaging',     description: 'Private investor messages for Pro users',                        icon: '💬' },
+  { key: 'pro_feature_leaderboard',  label: 'Pro: Full Leaderboard',     description: 'Full ranked leaderboard access for Pro users',                   icon: '🏅' },
+  { key: 'screener_enabled',         label: 'Pro: Screener Page',        description: 'Enable the /screener route',                                     icon: '🔍' },
+  { key: 'messaging_enabled',        label: 'Pro: Messaging Page',       description: 'Enable the /messaging route',                                    icon: '✉️' },
+
+  // ── SYSTEM ──
+  { key: 'seo_enabled',              label: 'SEO Meta Tags',             description: 'Enable Open Graph and Twitter card meta tags',                   icon: '🌐' },
+  { key: 'paystack_live_mode',       label: 'Paystack LIVE Mode',        description: 'Switch to live Paystack keys — real money transactions!',        icon: '💰', danger: true },
+  { key: 'maintenance_mode',         label: 'Maintenance Mode',          description: 'Show maintenance page to all non-admin users',                   icon: '🔧', danger: true },
 ]
+
+
 
 export default function AdminProControls() {
   const sb = createClient()
