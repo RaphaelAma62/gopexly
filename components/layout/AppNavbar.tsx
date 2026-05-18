@@ -17,14 +17,16 @@ const NAV_LINKS = [
 ]
 
 const MORE_LINKS = [
-  { href: '/watchlist',   label: 'Watchlist',          icon: '👁' },
-  { href: '/alerts',      label: 'Price Alerts',       icon: '🔔' },
-  { href: '/bookmarks',   label: 'Saved Posts',        icon: '🔖' },
-  { href: '/screener',    label: 'Stock Screener',     icon: '📊', pro: true },
-  { href: '/clubs',       label: 'Investment Clubs',   icon: '🏠' },
-  { href: '/messaging',   label: 'Messages',           icon: '💬', pro: true },
-  { href: '/referral',    label: 'Refer & Earn',       icon: '🎁' },
-  { href: '/search',      label: 'Search',             icon: '🔍' },
+  { href: '/watchlist',        label: 'Watchlist',          icon: '👁' },
+  { href: '/alerts',           label: 'Price Alerts',       icon: '🔔' },
+  { href: '/bookmarks',        label: 'Saved Posts',        icon: '🔖' },
+  { href: '/screener',         label: 'Stock Screener',     icon: '📊', pro: true },
+  { href: '/clubs',            label: 'Investment Clubs',   icon: '🏠' },
+  { href: '/messaging',        label: 'Messages',           icon: '💬', pro: true },
+  { href: '/referral',         label: 'Refer & Earn',       icon: '🎁' },
+  { href: '/search',           label: 'Search',             icon: '🔍' },
+  { href: '/about-us.html',    label: 'About Gopexly',      icon: '🌍', external: true },
+  { href: '/contact-us.html',  label: 'Contact Us',         icon: '📧', external: true },
 ]
 
 export default function AppNavbar() {
@@ -169,7 +171,7 @@ export default function AppNavbar() {
               <div className="flex items-center gap-2.5">
                 <span>{link.icon}</span>{link.label}
               </div>
-              {('pro' in link) && (link as {pro?: boolean}).pro && !isPro && (
+              {'pro' in link && link.pro && !isPro && (
                 <span className="text-[9px] bg-amber text-white px-1.5 py-0.5 rounded-full font-bold">PRO</span>
               )}
             </Link>
