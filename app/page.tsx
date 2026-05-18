@@ -61,14 +61,9 @@ export default function LandingPage() {
       })
       if (authErr) { setError('Incorrect email or password.'); setLoading(false); return }
       if (data.session) {
-        if (!rememberMe) {
-          // Session-only: store a flag so middleware knows to expire on tab close
-          sessionStorage.setItem('gopexly_session_only', 'true')
-        } else {
-          // Remember me: clear any session-only flag
-          sessionStorage.removeItem('gopexly_session_only')
-        }
-        await new Promise(r => setTimeout(r, 800))
+        // Session is stored in localStorage by Supabase automatically
+        // Small delay to ensure cookie is written before redirect
+        await new Promise(r => setTimeout(r, 1200))
         window.location.href = '/home'
       } else {
         setError('Login failed. Please try again.')
