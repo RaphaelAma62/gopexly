@@ -11,14 +11,19 @@ export async function createServerSupabaseClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll()
+        get(name: string) {
+          return cookieStore.get(name)?.value
         },
-        setAll(cookiesToSet) {
+        set(name: string, value: string, options) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
+            cookieStore.set(name, value, options)
+          } catch {
+            // Server Component — cookies can't be set here, handled by middleware
+          }
+        },
+        remove(name: string, options) {
+          try {
+            cookieStore.set(name, '', { ...options, maxAge: 0 })
           } catch {
             // Server Component — cookies can't be set here, handled by middleware
           }
