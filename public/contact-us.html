@@ -204,6 +204,10 @@
     </div>
 
     <form id="contactForm" onsubmit="handleSubmit(event)">
+  <input type="hidden" name="access_key" value="0fe9f629-cd7c-4a27-b860-693a809da972" />
+  <input type="hidden" name="subject" value="New Contact Form Submission — Gopexly" />
+  <input type="hidden" name="from_name" value="Gopexly Contact Form" />
+  <input type="hidden" name="redirect" value="false" />
       <div class="form-row">
         <div class="form-group">
           <label>First Name *</label>
@@ -297,10 +301,28 @@
 </footer>
 
 <script>
-function handleSubmit(e) {
+async function handleSubmit(e) {
   e.preventDefault();
-  document.getElementById('contactForm').style.display = 'none';
-  document.getElementById('successMsg').classList.add('show');
+  const form = document.getElementById('contactForm');
+  const btn = form.querySelector('button[type="submit"]');
+  btn.textContent = 'Sending...';
+  btn.disabled = true;
+
+  const data = new FormData(form);
+  const res = await fetch('https://api.web3forms.com/submit', {
+    method: 'POST',
+    body: data
+  });
+  const json = await res.json();
+
+  if (json.success) {
+    form.style.display = 'none';
+    document.getElementById('successMsg').classList.add('show');
+  } else {
+    btn.textContent = 'Send Message →';
+    btn.disabled = false;
+    alert('Something went wrong. Please try again.');
+  }
 }
 </script>
 
