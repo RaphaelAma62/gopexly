@@ -266,9 +266,9 @@ export default function LandingPage() {
           </div>
           <div className="text-[12px] text-gray-400">© 2026 Gopexly. All rights reserved.</div>
           <div className="flex gap-5 text-[12px] text-gray-500">
-            <a href="#" className="hover:text-gray-900">Terms</a>
-            <a href="#" className="hover:text-gray-900">Privacy</a>
-            <a href="#" className="hover:text-gray-900">Contact</a>
+            <a href="/terms-of-service.html" className="hover:text-gray-900">Terms</a>
+            <a href="/privacy-policy.html" className="hover:text-gray-900">Privacy</a>
+            <a href="/contact-us.html" className="hover:text-gray-900">Contact</a>
           </div>
         </div>
       </footer>
