@@ -98,7 +98,7 @@ export default function Clubs() {
     const { data } = await sb.from('club_posts')
       .insert({ club_id: activeClub.id, user_id: user.id, body: postText.trim() })
       .select('id,body,created_at,profiles!club_posts_user_id_fkey(name,initials)').single()
-    if (data) setClubPosts(prev => [data as ClubPost, ...prev])
+    if (data) setClubPosts(prev => [data as unknown as ClubPost, ...prev])
     setPostText('')
     setPosting(false)
   }
