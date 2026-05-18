@@ -62,6 +62,7 @@ export default function AppNavbar() {
   const { isPro } = useProStatus()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [openGroup, setOpenGroup] = useState<string | null>(null)
+  const [openMobileGroup, setOpenMobileGroup] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
@@ -176,6 +177,8 @@ export default function AppNavbar() {
 
       {mobileOpen && (
         <div className="md:hidden fixed top-[60px] left-0 right-0 bg-white border-b border-border z-[299] shadow-xl max-h-[85vh] overflow-y-auto">
+
+          {/* Pro banner */}
           <Link href="/pro" onClick={() => setMobileOpen(false)}
             className={cn('flex items-center gap-2.5 mx-3 mt-3 px-4 py-3 rounded-xl font-bold text-[14px]',
               isPro ? 'bg-amber/10 border border-amber/30 text-amber' : 'bg-gradient-to-r from-[#1e1b4b] to-primary text-white')}>
@@ -184,22 +187,52 @@ export default function AppNavbar() {
             {!isPro && <span className="ml-auto text-[11px] opacity-70">₦2,000/mo</span>}
           </Link>
 
-          {MENU_GROUPS.map(group => (
-            <div key={group.group} className="px-3 py-2">
-              <div className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest px-2 py-2">{group.group}</div>
-              {group.items.map(item => (
-                <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)}
-                  className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl mb-0.5 transition-colors',
-                    pathname === item.href ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-gray-50')}>
-                  <span className="text-[17px] w-6 text-center">{item.icon}</span>
-                  <span className="text-[14px] font-medium">{item.label}</span>
-                  {item.pro && !isPro && (
-                    <span className="ml-auto text-[9px] bg-amber text-white px-1.5 py-0.5 rounded-full font-bold">PRO</span>
+          {/* Collapsible category dropdowns */}
+          <div className="px-3 py-3 flex flex-col gap-1.5">
+            {MENU_GROUPS.map(group => {
+              const isGroupOpen = openMobileGroup === group.group
+              const hasActive = group.items.some(i => pathname === i.href)
+              return (
+                <div key={group.group} className={cn('rounded-2xl border overflow-hidden', hasActive ? 'border-primary-border' : 'border-border')}>
+                  <button
+                    onClick={() => setOpenMobileGroup(isGroupOpen ? null : group.group)}
+                    className={cn('w-full flex items-center justify-between px-4 py-3.5 text-left transition-colors',
+                      hasActive ? 'bg-primary-light' : isGroupOpen ? 'bg-gray-50' : 'bg-white hover:bg-gray-50')}>
+                    <div className="flex items-center gap-2">
+                      <span className={cn('text-[14px] font-bold', hasActive ? 'text-primary' : 'text-text')}>{group.group}</span>
+                      {hasActive && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                    </div>
+                    <span className={cn('text-[11px] transition-all duration-200', isGroupOpen ? 'rotate-180 inline-block' : '', hasActive ? 'text-primary' : 'text-text-muted')}>▼</span>
+                  </button>
+                  {isGroupOpen && (
+                    <div className="border-t border-border bg-white px-2 py-2 flex flex-col gap-0.5">
+                      {group.items.map(item => (
+                        <Link key={item.href} href={item.href}
+                          onClick={() => { setMobileOpen(false); setOpenMobileGroup(null) }}
+                          className={cn('flex items-center gap-3 px-3 py-3 rounded-xl transition-colors',
+                            pathname === item.href ? 'bg-primary-light text-primary' : 'text-text-secondary hover:bg-gray-50')}>
+                          <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-[17px] flex-shrink-0',
+                            pathname === item.href ? 'bg-primary text-white' : 'bg-gray-100')}>
+                            {item.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[14px] font-semibold">{item.label}</span>
+                              {item.pro && !isPro && (
+                                <span className="text-[9px] bg-amber text-white px-1.5 py-0.5 rounded-full font-bold">PRO</span>
+                              )}
+                            </div>
+                            <div className="text-[12px] text-text-muted">{item.desc}</div>
+                          </div>
+                          {pathname === item.href && <span className="text-primary text-[13px]">✓</span>}
+                        </Link>
+                      ))}
+                    </div>
                   )}
-                </Link>
-              ))}
-            </div>
-          ))}
+                </div>
+              )
+            })}
+          </div>
           <div className="h-4" />
         </div>
       )}
