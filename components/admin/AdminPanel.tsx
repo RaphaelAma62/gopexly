@@ -191,7 +191,7 @@ export default function AdminPanel() {
     const { data: ld } = await sb.from('posts')
       .select('id,body,created_at,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(30)
-    setLogs((ld || []) as typeof logs)
+    setLogs((ld || []) as unknown as LogRow[])
   }
 
   // ── USER ACTIONS ──────────────────────────────
