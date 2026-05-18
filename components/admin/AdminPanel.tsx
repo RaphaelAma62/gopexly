@@ -165,7 +165,7 @@ export default function AdminPanel() {
     const { data: pd } = await sb.from('posts')
       .select('id,user_id,body,created_at,likes_count,comments_count,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(60)
-    setPosts((pd || []) as Post[])
+    setPosts((pd || []) as unknown as PostRow[])
   }
 
   async function loadNews() {
