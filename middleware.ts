@@ -67,14 +67,22 @@ export async function middleware(request: NextRequest) {
   if (!user && isProtected) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
-    return NextResponse.redirect(url)
+    const redirectResponse = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie)
+    })
+    return redirectResponse
   }
 
   // Logged in + on landing page → go to app
   if (user && pathname === '/') {
     const url = request.nextUrl.clone()
     url.pathname = '/home'
-    return NextResponse.redirect(url)
+    const redirectResponse = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie)
+    })
+    return redirectResponse
   }
 
   // Admin routes — check role
@@ -88,7 +96,11 @@ export async function middleware(request: NextRequest) {
     if (!profile || !['admin', 'editor'].includes(profile.role)) {
       const url = request.nextUrl.clone()
       url.pathname = '/home'
-      return NextResponse.redirect(url)
+      const redirectResponse = NextResponse.redirect(url)
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie)
+      })
+      return redirectResponse
     }
   }
 
