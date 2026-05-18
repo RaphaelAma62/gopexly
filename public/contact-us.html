@@ -211,27 +211,27 @@
       <div class="form-row">
         <div class="form-group">
           <label>First Name *</label>
-          <input type="text" placeholder="Adaeze" required />
+          <input type="text" name="first_name" placeholder="Firstname" required />
         </div>
         <div class="form-group">
           <label>Last Name *</label>
-          <input type="text" placeholder="Okonkwo" required />
+          <input type="text" name="last_name" placeholder="Lastname" required />
         </div>
       </div>
 
       <div class="form-group">
         <label>Your Email Address *</label>
-        <input type="email" placeholder="you@example.com" required />
+        <input type="email" name="email" placeholder="you@example.com" required />
       </div>
 
       <div class="form-group">
         <label>Gopexly Username (optional)</label>
-        <input type="text" placeholder="@yourusername" />
+        <input type="text" name="username" placeholder="@yourusername" />
       </div>
 
       <div class="form-group">
         <label>Subject *</label>
-        <select required>
+        <select name="subject" required>
           <option value="" disabled selected>Select a topic...</option>
           <option>General Question</option>
           <option>Account or Login Issue</option>
@@ -247,7 +247,7 @@
 
       <div class="form-group">
         <label>Message *</label>
-        <textarea placeholder="Describe your question or issue in as much detail as possible..." required></textarea>
+        <<textarea name="message" placeholder="Describe your question..." required></textarea>
       </div>
 
       <button type="submit" class="btn-submit">Send Message →</button>
