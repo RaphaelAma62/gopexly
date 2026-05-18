@@ -169,7 +169,7 @@ export default function AppNavbar() {
               <div className="flex items-center gap-2.5">
                 <span>{link.icon}</span>{link.label}
               </div>
-              {'pro' in link && link.pro && !isPro && (
+              {('pro' in link) && (link as {pro?: boolean}).pro && !isPro && (
                 <span className="text-[9px] bg-amber text-white px-1.5 py-0.5 rounded-full font-bold">PRO</span>
               )}
             </Link>
