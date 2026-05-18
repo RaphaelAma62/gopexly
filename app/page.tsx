@@ -73,7 +73,6 @@ export default function LandingPage() {
         return
       }
       if (data.session) {
-        // Wait for session to be stored then redirect
         await new Promise(r => setTimeout(r, 1000))
         window.location.href = '/home'
       } else {
@@ -144,13 +143,27 @@ export default function LandingPage() {
         joined_at: new Date().toISOString(),
       }, { onConflict: 'id' })
 
+      // ── ADD TO BREVO "GOPEXLY NEW USERS" LIST ──
+      try {
+        await fetch('/api/brevo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            firstName,
+            lastName,
+          }),
+        })
+      } catch (brevoErr) {
+        // Don't block signup if Brevo fails
+        console.error('Brevo error:', brevoErr)
+      }
+      // ──────────────────────────────────────────
+
       if (data.session) {
-        // Email confirm is OFF — session created immediately
-        // Wait for session cookie to be written
         await new Promise(r => setTimeout(r, 1200))
         window.location.href = '/home'
       } else {
-        // Email confirm is ON — show check email message
         setSignupDone(true)
         setLoading(false)
       }
@@ -172,12 +185,10 @@ export default function LandingPage() {
             Gopexly
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => openModal('signin')}
-              className="text-[13px] font-semibold text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-all">
+            <button onClick={() => openModal('signin')} className="text-[13px] font-semibold text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-all">
               Sign In
             </button>
-            <button onClick={() => openModal('signup')}
-              className="text-[13px] font-bold bg-primary text-white px-5 py-2.5 rounded-xl hover:bg-primary-dark transition-all shadow-sm">
+            <button onClick={() => openModal('signup')} className="text-[13px] font-bold bg-primary text-white px-5 py-2.5 rounded-xl hover:bg-primary-dark transition-all shadow-sm">
               Get Started →
             </button>
           </div>
@@ -192,7 +203,7 @@ export default function LandingPage() {
         </div>
         <div className="relative max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 bg-primary-light text-primary text-[12px] font-bold px-4 py-1.5 rounded-full mb-6 border border-primary-border">
-            🇳🇬 Built for Nigerian Investors
+            🇳🇬 Built for African Investors
           </div>
           <h1 className="font-display text-[48px] md:text-[64px] font-black text-gray-900 leading-tight tracking-tight mb-6">
             Africa&apos;s Social<br />
@@ -202,12 +213,10 @@ export default function LandingPage() {
             Track NGX stocks, share investment insights, and grow your wealth alongside a community of investors.
           </p>
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            <button onClick={() => openModal('signup')}
-              className="bg-primary text-white text-[15px] font-bold px-8 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg hover:-translate-y-0.5">
+            <button onClick={() => openModal('signup')} className="bg-primary text-white text-[15px] font-bold px-8 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5">
               Start Investing Free →
             </button>
-            <button onClick={() => openModal('signin')}
-              className="text-[15px] font-semibold text-gray-700 px-8 py-4 rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all">
+            <button onClick={() => openModal('signin')} className="text-[15px] font-semibold text-gray-700 px-8 py-4 rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all">
               Sign In
             </button>
           </div>
@@ -218,12 +227,8 @@ export default function LandingPage() {
       {/* FEATURES */}
       <section className="py-20 px-5 bg-gray-50">
         <div className="max-w-5xl mx-auto">
-          <h2 className="font-display text-[32px] font-extrabold text-center text-gray-900 mb-3">
-            Everything you need to invest smarter
-          </h2>
-          <p className="text-center text-gray-500 mb-12 text-[15px]">
-            Built specifically for the Nigerian Exchange and African markets
-          </p>
+          <h2 className="font-display text-[32px] font-extrabold text-center text-gray-900 mb-3">Everything you need to invest smarter</h2>
+          <p className="text-center text-gray-500 mb-12 text-[15px]">Built specifically for the Nigerian Exchange and African markets</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { icon: '📈', title: 'Live NGX Prices', desc: '124 stocks tracked in real-time from the Nigerian Exchange Group.' },
@@ -246,12 +251,9 @@ export default function LandingPage() {
       {/* CTA */}
       <section className="py-20 px-5 text-center">
         <div className="max-w-xl mx-auto">
-          <h2 className="font-display text-[32px] font-extrabold text-gray-900 mb-4">
-            Ready to start investing smarter?
-          </h2>
-          <p className="text-gray-500 mb-8 text-[15px]">Join thousands of Nigerian investors already on Gopexly.</p>
-          <button onClick={() => openModal('signup')}
-            className="bg-primary text-white text-[15px] font-bold px-10 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg">
+          <h2 className="font-display text-[32px] font-extrabold text-gray-900 mb-4">Ready to start investing smarter?</h2>
+          <p className="text-gray-500 mb-8 text-[15px]">Join thousands of African investors already on Gopexly.</p>
+          <button onClick={() => openModal('signup')} className="bg-primary text-white text-[15px] font-bold px-10 py-4 rounded-2xl hover:bg-primary-dark transition-all shadow-lg">
             Create Free Account →
           </button>
         </div>
@@ -404,8 +406,8 @@ export default function LandingPage() {
                       </button>
                       <p className="text-center text-[11px] text-gray-400">
                         By signing up you agree to our{' '}
-                        <a href="#" className="text-primary">Terms</a> &amp;{' '}
-                        <a href="#" className="text-primary">Privacy Policy</a>
+                        <a href="/terms-of-service.html" className="text-primary">Terms</a> &amp;{' '}
+                        <a href="/privacy-policy.html" className="text-primary">Privacy Policy</a>
                       </p>
                     </form>
                   )}
