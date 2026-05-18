@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useProStatus } from '@/lib/hooks/useProStatus'
 
 const NAV_LINKS = [
   { href: '/home',        label: 'Home',      icon: '🏠' },
@@ -24,6 +25,7 @@ const MORE_LINKS = [
 export default function AppNavbar() {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { isPro } = useProStatus()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const isMoreActive = MORE_LINKS.some(l => pathname === l.href)
@@ -32,11 +34,14 @@ export default function AppNavbar() {
     <>
       <nav className="fixed top-0 left-0 right-0 z-[300] h-[60px] flex items-center bg-white/95 backdrop-blur-xl border-b border-border">
         <div className="flex items-center justify-between w-full max-w-[1280px] mx-auto px-5 gap-2.5">
+
+          {/* Logo */}
           <Link href="/home" className="font-display text-[18px] font-extrabold flex items-center gap-1.5 text-text">
             <div className="w-7 h-7 bg-primary rounded-[7px] flex items-center justify-center text-white text-[13px] font-extrabold">G</div>
             Gopexly
           </Link>
 
+          {/* Desktop nav */}
           <div className="hidden md:flex gap-px items-center">
             {NAV_LINKS.map(link => (
               <Link key={link.href} href={link.href}
@@ -45,6 +50,8 @@ export default function AppNavbar() {
                 {link.label}
               </Link>
             ))}
+
+            {/* More dropdown */}
             <div className="relative">
               <button onClick={() => setMoreOpen(p => !p)}
                 className={cn('px-[11px] py-1.5 rounded-[7px] text-[13px] font-medium transition-all flex items-center gap-1',
@@ -66,28 +73,64 @@ export default function AppNavbar() {
             </div>
           </div>
 
+          {/* Right side */}
           <div className="flex items-center gap-1.5">
+
+            {/* Pro badge OR upgrade button */}
+            {isPro ? (
+              <Link href="/pro"
+                className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-amber to-yellow-400 text-[#0f172a] font-extrabold text-[11px] px-3 py-1.5 rounded-full hover:shadow-md transition-all">
+                👑 Pro
+              </Link>
+            ) : (
+              <Link href="/pro"
+                className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-[#1e1b4b] to-primary text-white font-bold text-[11px] px-3 py-1.5 rounded-full hover:shadow-md hover:-translate-y-px transition-all whitespace-nowrap">
+                👑 Upgrade
+              </Link>
+            )}
+
+            {/* Search */}
             <Link href="/search" className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-all',
               pathname === '/search' ? 'bg-primary-light text-primary' : 'bg-gray-50 border border-border hover:bg-primary-light')}>
               🔍
             </Link>
+
+            {/* Alerts */}
             <Link href="/alerts" className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-all',
               pathname === '/alerts' ? 'bg-primary-light text-primary' : 'bg-gray-50 border border-border hover:bg-primary-light')}>
               🔔
             </Link>
+
+            {/* Profile */}
             <Link href="/profile" className="flex items-center gap-1.5 bg-gray-50 border border-border rounded-[9px] py-[3px] pl-1 pr-2.5 hover:bg-gray-100 transition-all">
-              <div className="w-[26px] h-[26px] rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+              <div className={cn('w-[26px] h-[26px] rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 text-white',
+                isPro ? 'bg-gradient-to-br from-amber to-yellow-400 text-[#0f172a]' : 'bg-primary')}>
                 {user?.initials ?? '?'}
               </div>
               <span className="text-[12px] font-semibold text-text hidden sm:block">{user?.firstName ?? 'Account'}</span>
             </Link>
+
+            {/* Mobile burger */}
             <button className="md:hidden text-[21px] text-gray-500" onClick={() => setMobileOpen(p => !p)}>☰</button>
           </div>
         </div>
       </nav>
 
+      {/* Mobile menu */}
       {mobileOpen && (
         <div className="md:hidden fixed top-[60px] left-0 right-0 bg-white border-b border-border px-3.5 py-2 pb-4 flex flex-col gap-px z-[299] shadow-md max-h-[80vh] overflow-y-auto">
+
+          {/* Pro banner in mobile menu */}
+          <Link href="/pro" onClick={() => setMobileOpen(false)}
+            className={cn('flex items-center gap-2.5 px-3 py-3 rounded-xl mb-1 font-bold text-[14px]',
+              isPro
+                ? 'bg-gradient-to-r from-amber/20 to-yellow-50 border border-amber/40 text-amber'
+                : 'bg-gradient-to-r from-[#1e1b4b] to-primary text-white')}>
+            <span>👑</span>
+            {isPro ? 'Gopexly Pro — Active' : 'Upgrade to Pro'}
+            {!isPro && <span className="ml-auto text-[11px] opacity-70">₦2,000/mo</span>}
+          </Link>
+
           {[...NAV_LINKS, ...MORE_LINKS, { href: '/profile', label: 'My Account', icon: '👤' }].map(link => (
             <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)}
               className={cn('flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[14px] font-medium',
