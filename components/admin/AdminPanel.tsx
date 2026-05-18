@@ -9,6 +9,7 @@ import { Toast, Spinner } from '@/components/ui'
 import type { Profile, Post, StockPrice } from '@/types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import AdminProControls from './AdminProControls'
 
 // Explicit row types to avoid Supabase 'never' inference
 type ProfileRow = { id: string; name: string | null; username: string | null; country: string | null; role: string; is_suspended: boolean; is_verified: boolean; total_posts: number; joined_at: string | null; initials: string | null; phone: string | null; followers_count: number; points: number; streak: number }
@@ -17,14 +18,9 @@ type NewsRow = { id: string; title: string; body: string; created_at: string; so
 type CourseRow = { id: string; title: string; category: string; difficulty: string; points_reward: number; lesson_count: number; is_published: boolean }
 type HoldingRow = { id: string; ticker: string; company_name: string | null; shares: number; buy_price: number; profiles: { name: string | null } | null }
 type LogRow = { id: string; body: string; created_at: string; profiles: { name: string | null } | null }
-type SupabaseRelation<T> = T | T[] | null
-
-function oneRelation<T>(relation: SupabaseRelation<T>): T | null {
-  return Array.isArray(relation) ? relation[0] ?? null : relation
-}
 
 
-type AdminSection = 'dashboard' | 'users' | 'suspended' | 'admins' | 'posts' | 'news' | 'courses' | 'portfolios' | 'market' | 'settings' | 'logs'
+type AdminSection = 'dashboard' | 'users' | 'suspended' | 'admins' | 'posts' | 'news' | 'courses' | 'portfolios' | 'market' | 'pro' | 'settings' | 'logs'
 
 const NAV_ITEMS = [
   { section: 'dashboard' as AdminSection, icon: '🏠', label: 'Dashboard', group: 'overview' },
@@ -36,6 +32,7 @@ const NAV_ITEMS = [
   { section: 'courses' as AdminSection, icon: '🎓', label: 'Courses', group: 'content' },
   { section: 'portfolios' as AdminSection, icon: '💼', label: 'Portfolios', group: 'finance' },
   { section: 'market' as AdminSection, icon: '📈', label: 'Market Data', group: 'finance' },
+  { section: 'pro' as AdminSection, icon: '👑', label: 'Pro Controls', group: 'monetise' },
   { section: 'settings' as AdminSection, icon: '⚙', label: 'Settings', group: 'system' },
   { section: 'logs' as AdminSection, icon: '📝', label: 'Activity Logs', group: 'system' },
 ]
@@ -168,8 +165,7 @@ export default function AdminPanel() {
     const { data: pd } = await sb.from('posts')
       .select('id,user_id,body,created_at,likes_count,comments_count,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(60)
-    setPosts(((pd || []) as (Omit<PostRow, 'profiles'> & { profiles: SupabaseRelation<{ name: string | null }> })[])
-      .map(p => ({ ...p, profiles: oneRelation(p.profiles) })))
+    setPosts((pd || []) as Post[])
   }
 
   async function loadNews() {
@@ -195,8 +191,7 @@ export default function AdminPanel() {
     const { data: ld } = await sb.from('posts')
       .select('id,body,created_at,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(30)
-    setLogs(((ld || []) as (Omit<LogRow, 'profiles'> & { profiles: SupabaseRelation<{ name: string | null }> })[])
-      .map(l => ({ ...l, profiles: oneRelation(l.profiles) })))
+    setLogs((ld || []) as typeof logs)
   }
 
   // ── USER ACTIONS ──────────────────────────────
@@ -370,7 +365,7 @@ export default function AdminPanel() {
           </div>
         </div>
         <nav className="flex-1 px-2 py-3 overflow-y-auto">
-          {['overview', 'users', 'content', 'finance', 'system'].map(group => (
+          {['overview', 'users', 'content', 'finance', 'monetise', 'system'].map(group => (
             <div key={group}>
               <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider px-2 py-2 mt-3 first:mt-0 capitalize">{group}</div>
               {NAV_ITEMS.filter(i => i.group === group).map(item => (
@@ -790,6 +785,20 @@ export default function AdminPanel() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* PRO CONTROLS */}
+          {section === 'pro' && (
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber to-yellow-400 flex items-center justify-center text-[20px] shadow-sm">👑</div>
+                <div>
+                  <div className="font-display text-[18px] font-extrabold">Pro Controls</div>
+                  <div className="text-[13px] text-text-muted">Manage Pro subscriptions, features, and verified badges</div>
+                </div>
+              </div>
+              <AdminProControls />
             </div>
           )}
 
