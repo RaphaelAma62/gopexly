@@ -22,9 +22,9 @@ const SUGGESTIONS = [
 export default function GopexAI() {
   const sb = createClient()
   const { user } = useAuth()
-  const { prices } = usePrices()
 
   const [open, setOpen] = useState(false)
+  const { prices } = usePrices(open)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -34,10 +34,10 @@ export default function GopexAI() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!open || !user) return
     sb.from('holdings').select('ticker,shares,buy_price,company_name').eq('user_id', user.id)
       .then(({ data }) => setPortfolio(data || []))
-  }, [user, sb])
+  }, [open, user, sb])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

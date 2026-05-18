@@ -14,6 +14,45 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Protected app routes — must be logged in
+  const isProtected =
+    pathname.startsWith('/home') ||
+    pathname.startsWith('/market') ||
+    pathname.startsWith('/portfolio') ||
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/learn') ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/notifications') ||
+    pathname.startsWith('/search') ||
+    pathname.startsWith('/watchlist') ||
+    pathname.startsWith('/alerts') ||
+    pathname.startsWith('/bookmarks') ||
+    pathname.startsWith('/leaderboard') ||
+    pathname.startsWith('/pro') ||
+    pathname.startsWith('/screener') ||
+    pathname.startsWith('/clubs') ||
+    pathname.startsWith('/messaging') ||
+    pathname.startsWith('/referral') ||
+    pathname.startsWith('/stocks') ||
+    pathname.startsWith('/about') ||
+    pathname.startsWith('/contact')
+
+  const hasAuthCookie = request.cookies
+    .getAll()
+    .some((cookie) => cookie.name.startsWith('sb-'))
+
+  // Public routes with no Supabase session cookie should avoid the auth network call.
+  if (!isProtected && !(pathname === '/' && hasAuthCookie)) {
+    return NextResponse.next()
+  }
+
+  // Protected routes without a session cookie can redirect immediately.
+  if (isProtected && !hasAuthCookie) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    return NextResponse.redirect(url)
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -38,31 +77,8 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Refresh session — keeps auth token alive automatically
+  // Refresh session only when the route needs auth or an existing session may redirect.
   const { data: { user } } = await supabase.auth.getUser()
-
-  // Protected app routes — must be logged in
-  const isProtected =
-    pathname.startsWith('/home') ||
-    pathname.startsWith('/market') ||
-    pathname.startsWith('/portfolio') ||
-    pathname.startsWith('/profile') ||
-    pathname.startsWith('/learn') ||
-    pathname.startsWith('/admin') ||
-    pathname.startsWith('/notifications') ||
-    pathname.startsWith('/search') ||
-    pathname.startsWith('/watchlist') ||
-    pathname.startsWith('/alerts') ||
-    pathname.startsWith('/bookmarks') ||
-    pathname.startsWith('/leaderboard') ||
-    pathname.startsWith('/pro') ||
-    pathname.startsWith('/screener') ||
-    pathname.startsWith('/clubs') ||
-    pathname.startsWith('/messaging') ||
-    pathname.startsWith('/referral') ||
-    pathname.startsWith('/stocks') ||
-    pathname.startsWith('/about') ||
-    pathname.startsWith('/contact')
 
   // Not logged in → redirect to landing page
   if (!user && isProtected) {

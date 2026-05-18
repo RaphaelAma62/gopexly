@@ -160,12 +160,19 @@ export default function HomeFeed() {
       const postsData = (data || []) as unknown as Post[]
       setPosts(postsData)
       if (postsData.length) {
+        const postIds = postsData.map(p => p.id)
         const imgMap: Record<string, string[]> = {}
-        await Promise.all(postsData.map(async p => {
-          const { data: imgs } = await sb.from('post_images').select('image_url').eq('post_id', p.id)
-          if (imgs?.length) imgMap[p.id] = imgs.map((i: { image_url: string }) => i.image_url)
-        }))
+        const { data: imgs } = await sb
+          .from('post_images')
+          .select('post_id,image_url')
+          .in('post_id', postIds)
+        imgs?.forEach((img: { post_id: string; image_url: string }) => {
+          if (!imgMap[img.post_id]) imgMap[img.post_id] = []
+          imgMap[img.post_id].push(img.image_url)
+        })
         setPostImages(imgMap)
+      } else {
+        setPostImages({})
       }
       const { data: likes } = await sb.from('likes').select('post_id').eq('user_id', user.id)
       setLikedPosts(new Set((likes || []).map((l: { post_id: string }) => l.post_id)))
