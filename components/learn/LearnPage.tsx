@@ -89,7 +89,7 @@ export default function LearnPage() {
   async function markComplete() {
     if (!activeCourse || !user || !lessons[lessonIdx]) return
     const lesson = lessons[lessonIdx]
-    await sb.from('course_progress').upsert(
+    await (sb.from('course_progress') as any).upsert(
       { user_id: user.id, course_id: activeCourse.id, lesson_id: lesson.id, completed: true, completed_at: new Date().toISOString() },
       { onConflict: 'user_id,lesson_id' }
     )
@@ -109,14 +109,14 @@ export default function LearnPage() {
   async function awardPoints(pts: number) {
     if (!user) return
     const newPts = points + pts
-    await sb.from('profiles').update({ points: newPts }).eq('id', user.id)
+    await (sb.from('profiles') as any).update({ points: newPts }).eq('id', user.id)
     setPoints(newPts)
   }
 
   const currentLesson = lessons[lessonIdx]
   const lessonAssessments = assessments.filter(a => a.lesson_id === currentLesson?.id)
   const isLastLesson = lessonIdx === lessons.length - 1
-  const totalDone = Object.values(progress).reduce((a, v) => a + v.length, 0)
+  const totalDone = Object.values(progress).reduce((a: number, v: unknown) => a + (v as string[]).length, 0)
 
   return (
     <div className="max-w-[1100px] mx-auto">
@@ -273,7 +273,7 @@ export default function LearnPage() {
                   { icon: '📚', label: 'First Lesson', earned: totalDone > 0 },
                   { icon: '🔥', label: '5 Day Streak', earned: streak >= 5 },
                   { icon: '⭐', label: '100 Points', earned: points >= 100 },
-                  { icon: '🎓', label: 'Graduate', earned: Object.values(progress).some(v => v.length > 0) },
+                  { icon: '🎓', label: 'Graduate', earned: Object.values(progress).some((v: unknown) => (v as string[]).length > 0) },
                   { icon: '💰', label: 'Investor', earned: false },
                   { icon: '📈', label: 'Trader', earned: false },
                   { icon: '🏆', label: 'Top 10', earned: false },

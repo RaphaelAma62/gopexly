@@ -87,16 +87,19 @@ export default function StockScreener() {
   }
 
   // Build stocks array
-  const allStocks: ScreenerStock[] = Object.entries(prices).map(([ticker, data]) => ({
-    ticker,
-    company_name: data.company_name,
-    price:        data.price,
-    change_pct:   data.change_pct,
-    change_amt:   data.change_amt ?? 0,
-    volume:       data.volume,
-    market_cap:   data.market_cap,
-    signal:       getSignal(data.change_pct),
-  }))
+  const allStocks: ScreenerStock[] = Object.entries(prices).map(([ticker, data]) => {
+    const d = data as { price: number; change_pct: number; change_amt?: number; company_name: string; volume?: number; market_cap?: number }
+    return {
+      ticker,
+      company_name: d.company_name,
+      price:        d.price,
+      change_pct:   d.change_pct,
+      change_amt:   d.change_amt ?? 0,
+      volume:       d.volume,
+      market_cap:   d.market_cap,
+      signal:       getSignal(d.change_pct),
+    }
+  })
 
   // Filter + sort (memoised)
   // eslint-disable-next-line react-hooks/rules-of-hooks

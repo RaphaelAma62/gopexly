@@ -8,6 +8,9 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'gain' | 'amber'
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
+  className?: string
+  children?: React.ReactNode
+  disabled?: boolean
 }
 
 export function Button({
@@ -213,6 +216,7 @@ export function CardHeader({ title, children }: { title: string; children?: Reac
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
   error?: string
+  className?: string
 }
 
 export function Input({ label, error, className, ...props }: InputProps) {

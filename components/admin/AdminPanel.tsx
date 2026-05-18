@@ -165,7 +165,7 @@ export default function AdminPanel() {
     const { data: pd } = await sb.from('posts')
       .select('id,user_id,body,created_at,likes_count,comments_count,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(60)
-    setPosts((pd || []) as unknown as PostRow[])
+    setPosts((pd || []) as Post[])
   }
 
   async function loadNews() {
@@ -191,7 +191,7 @@ export default function AdminPanel() {
     const { data: ld } = await sb.from('posts')
       .select('id,body,created_at,profiles!posts_user_id_fkey(name)')
       .order('created_at', { ascending: false }).limit(30)
-    setLogs((ld || []) as unknown as LogRow[])
+    setLogs((ld || []) as typeof logs)
   }
 
   // ── USER ACTIONS ──────────────────────────────
@@ -349,7 +349,7 @@ export default function AdminPanel() {
 
   const pagedUsers = filteredUsers.slice((userPage - 1) * PER, userPage * PER)
   const userPages = Math.ceil(filteredUsers.length / PER)
-  const totalCountry = Object.values(countryData).reduce((a, v) => a + v, 0) || 1
+  const totalCountry = (Object.values(countryData) as number[]).reduce((a, v) => a + v, 0) || 1
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -427,11 +427,11 @@ export default function AdminPanel() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-surface border border-border rounded-xl p-4">
                   <div className="text-[11px] font-bold text-text-muted uppercase tracking-wide mb-3">User Registrations</div>
-                  {Object.entries(countryData).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([c, v]) => (
+                  {(Object.entries(countryData) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([c, v]) => (
                     <div key={c} className="flex items-center gap-2 mb-2">
                       <div className="text-[11px] text-text-secondary w-16 truncate">{c}</div>
                       <div className="flex-1 bg-gray-200 rounded h-1.5">
-                        <div className="h-full rounded bg-primary" style={{ width: `${Math.round(v / totalCountry * 100)}%` }} />
+                        <div className="h-full rounded bg-primary" style={{ width: `${Math.round((v as number) / totalCountry * 100)}%` }} />
                       </div>
                       <div className="text-[11px] font-bold w-6 text-right">{v}</div>
                     </div>
