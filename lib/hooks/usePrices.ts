@@ -4,17 +4,12 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { PriceMap } from '@/types'
 
-export function usePrices(enabled = true) {
+export function usePrices() {
   const [prices, setPrices] = useState<PriceMap>({})
   const [loading, setLoading] = useState(true)
   const sb = createClient()
 
   const fetchPrices = useCallback(async () => {
-    if (!enabled) {
-      setLoading(false)
-      return
-    }
-
     const { data } = await sb
       .from('stock_prices')
       .select('ticker,price,change_pct,change_amt,company_name,volume,market_cap,last_updated')
@@ -44,18 +39,13 @@ export function usePrices(enabled = true) {
       setPrices(map)
     }
     setLoading(false)
-  }, [enabled, sb])
+  }, [sb])
 
   useEffect(() => {
-    if (!enabled) {
-      setLoading(false)
-      return
-    }
-
     fetchPrices()
     const interval = setInterval(fetchPrices, 10 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [enabled, fetchPrices])
+  }, [fetchPrices])
 
   return { prices, loading, refetch: fetchPrices }
 }
