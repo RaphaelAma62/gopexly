@@ -1099,6 +1099,6 @@ function PostCard({ post, myId, myInitials, images, liked, bookmarked, commentsO
           </div>
         </div>
       )}
-    </article>
+    </rticle>
   )
 }
